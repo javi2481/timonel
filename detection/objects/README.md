@@ -27,6 +27,8 @@ vía PaddleX `object_detection`.
 | Compose | `paddlex-objects` |
 | Puerto | `8082` |
 | Env | `PADDLEX_OBJECTS_URL`, `PADDLEX_OBJECTS_PREDICT_PATH` |
+| Modelo | `PP-YOLOE_plus-S` vía `pipeline.yaml` (el default de PaddleX sería PicoDet-S) |
+| Escalada | `PP-YOLOE_plus-L` con `docker-compose.objects-yoloe-exp.yml` (+recall, ~3.5x wall, ~2x RAM) |
 
 ## Archivos clave
 

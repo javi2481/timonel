@@ -92,7 +92,7 @@ Ver README raíz (§ RAM del host). Anchors `x-limits-default` (8 GB / default) 
 | Capacidad | Preferencia lite |
 |-----------|------------------|
 | OCR | Ya: PP-OCRv5 mobile (`OCR_PIPELINE_CONFIG`) |
-| Objects | PicoDet vía config object_detection |
+| Objects | PP-YOLOE_plus-S vía YAML `detection/objects/pipeline.yaml`; escalada a `-L` con `docker-compose.objects-yoloe-exp.yml` |
 | Scene | PP-LiteSeg-T en YAML lane/bdd |
 | Faces | PP-YOLOE_plus-S_face vía YAML `detection/faces/pipeline.yaml` (endpoint `/object-detection`) |
 

@@ -86,6 +86,32 @@ class ScaleDetectionsTests(unittest.TestCase):
         self.assertEqual(dets[0]["label"], "car")
         self.assertIsNone(dets[0]["plate"])
 
+    def test_hires_to_infer_to_hires_round_trip_under_1px(self) -> None:
+        """Camino producto completo: bbox hires -> espacio infer -> hires, error < 1px."""
+        frame = np.zeros((2160, 3840, 3), dtype=np.uint8)
+        _, scale_x, scale_y = maybe_resize_for_infer(frame)
+        self.assertGreater(scale_x, 1.0)
+
+        bbox_hires = [412.0, 337.0, 2895.0, 1741.0]
+        dets = [
+            {
+                "track_id": "1",
+                "label": "sedan",
+                "score": 0.9,
+                "bbox": [
+                    bbox_hires[0] / scale_x,
+                    bbox_hires[1] / scale_y,
+                    bbox_hires[2] / scale_x,
+                    bbox_hires[3] / scale_y,
+                ],
+            }
+        ]
+
+        scale_detections(dets, scale_x, scale_y)
+
+        for got, expected in zip(dets[0]["bbox"], bbox_hires):
+            self.assertLess(abs(got - expected), 1.0)
+
     def test_pass_through_when_no_resize(self) -> None:
         dets = [{"bbox": [1.0, 2.0, 3.0, 4.0], "track_id": "1"}]
         result = scale_detections(dets, 1.0, 1.0)
@@ -362,6 +388,45 @@ class DrawPreviewTests(unittest.TestCase):
         ]
         jpeg = draw_preview(frame, dets)
         self.assertIsNotNone(jpeg)
+
+
+class DrawPreviewGeometryTests(unittest.TestCase):
+    """Asserts geométricos sobre el JPEG decodificado (tolerantes a AA + JPEG)."""
+
+    def test_bbox_drawn_in_place_on_wide_frame(self) -> None:
+        import cv2
+
+        h, w = 1200, 2400  # W > 1920: mismo régimen que fotos hires
+        frame = np.zeros((h, w, 3), dtype=np.uint8)
+        bbox = [600.0, 400.0, 1500.0, 900.0]  # lejos de las esquinas del frame
+        det = {
+            "track_id": "1",
+            "label": "sedan",
+            "score": 0.9,
+            "bbox": bbox,
+        }
+        expected = np.array(preview_box_color(det), dtype=np.int32)
+
+        jpeg = draw_preview(frame, [det])
+        self.assertIsNotNone(jpeg)
+        assert jpeg is not None
+        img = cv2.imdecode(np.frombuffer(jpeg, np.uint8), cv2.IMREAD_COLOR)
+
+        self.assertEqual(img.shape, frame.shape)
+
+        # Esquinas del frame intactas (no pintó fuera del bbox/label).
+        for py, px in ((0, 0), (0, w - 1), (h - 1, 0), (h - 1, w - 1)):
+            self.assertLessEqual(int(img[py, px].max()), 5)
+
+        # Banda estrecha sobre el borde inferior del rect (evita el label,
+        # que se dibuja arriba): debe haber pixeles ~color esperado.
+        y2 = int(bbox[3])
+        band = img[y2 - 4 : y2 + 5, int(bbox[0]) + 20 : int(bbox[2]) - 20]
+        diffs = np.abs(band.astype(np.int32) - expected).max(axis=2)
+        self.assertTrue(
+            bool((diffs <= 40).any()),
+            "sin pixeles del color esperado en la banda del borde inferior",
+        )
 
 
 class NormalizeFaceResultTests(unittest.TestCase):

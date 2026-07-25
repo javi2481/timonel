@@ -1,0 +1,22 @@
+# Escalada opt-in de objects: PP-YOLOE_plus-L en lugar del PP-YOLOE_plus-S default.
+# Usar cuando el recall de S no alcanza y hay RAM/tiempo de sobra (desktop).
+# Costo medido vs S: recall 0.604 -> 0.693, wall ~25s -> ~88s, RAM ~466MiB -> ~965MiB.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.objects-yoloe-exp.yml up -d paddlex-objects
+# Restore (vuelve a PP-YOLOE_plus-S):
+#   docker compose up -d paddlex-objects
+#
+# Pesos de S y L quedan cacheados en el volumen paddlex-objects-models: el swap
+# es un restart (~40s), no una descarga.
+
+services:
+  paddlex-objects:
+    # L midió ~965MiB contra el techo default de 1200m (82%): sin este bump,
+    # una foto más grande lo tira por OOM. En notebook 8 GB, compite con el resto.
+    mem_limit: 1600m
+    environment:
+      - VI_PIPELINE=/opt/paddlex/pipelines/object_detection_yoloe_exp.yaml
+    volumes:
+      - paddlex-objects-models:/root/.paddlex
+      - ./detection/objects/pipeline_yoloe_plus_exp.yaml:/opt/paddlex/pipelines/object_detection_yoloe_exp.yaml:ro

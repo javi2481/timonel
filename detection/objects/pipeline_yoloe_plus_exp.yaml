@@ -1,0 +1,17 @@
+# Escalada opt-in — NO es el default del producto (ese es pipeline.yaml, S).
+# Se monta sólo vía docker-compose.objects-yoloe-exp.yml, que además sube mem_limit.
+# Restore: docker compose up -d paddlex-objects (without this mount).
+#
+# model_name: PP-YOLOE_plus-L (PaddleX 3.7 object_detection catalog).
+# Docs: https://paddlepaddle.github.io/PaddleX/3.7/en/pipeline_usage/tutorials/cv_pipelines/object_detection.html
+
+pipeline_name: object_detection
+
+SubModules:
+  ObjectDetection:
+    module_name: object_detection
+    model_name: PP-YOLOE_plus-L
+    model_dir: null
+    batch_size: 1
+    img_size: null
+    threshold: null

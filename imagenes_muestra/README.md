@@ -42,6 +42,15 @@ PYTHONPATH=. python scripts/eval_paddlex_fixtures.py --packs all --out imagenes_
 # Subset: --only / --pipelines signs,faces,anomaly
 ```
 
+Smoke integración Core (bridge → `/events` → preview; no harness):
+
+```bash
+python scripts/smoke_core_stack.py
+# OCR on en el stack: EXPECT_PLATE_OCR=true python scripts/smoke_core_stack.py
+```
+
+Default vehicles photo: `fo_vehicles_0002.jpg` (0001 often yields 0 boxes locally).
+
 | Layer | Suites | Notes |
 |-------|--------|-------|
 | Core | `objects` :8082, `vehicles` :8080, `ocr_plates` :8081 | Local accuracy gate |
