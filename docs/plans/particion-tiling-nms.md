@@ -165,14 +165,35 @@ Antes del NMS-B: **remapear** siempre con `class_id_for_cross_cap_nms`. Si se re
 ### Exit criteria PR3
 NMS-B no borra anidados; zones bridge → epp → rules; tipos TS regenerados; tests de extent + remap verdes.
 
+### Estado merge (2026-07-25)
+- **Merged:** PR1 [#19](https://github.com/javi2481/vision-intelligence/pull/19), PR2 [#20](https://github.com/javi2481/vision-intelligence/pull/20), PR3 [#21](https://github.com/javi2481/vision-intelligence/pull/21) → `master` tip **`d569a76`**.
+- **SCHEMA_VERSION** sigue **`"1.0"`** (`zones` aditivo).
+- **Smoke zonas:** [`pr3-zones-smoke.md`](pr3-zones-smoke.md) — tag `zones` en `/events` + alerta `zone:no_parking` en rules-sink (requiere imagen rules-sink con `rules.app:app`).
+- Compose: bridge recibe `VI_ZONES_JSON` / `CROSS_CAP_NMS_THRESHOLD`.
+
+---
+
+## Medición hires multi-tile (post-PR3) → flag tiling
+
+Ver [`hires-tiling-measure.md`](hires-tiling-measure.md).
+
+| Señal | Número |
+|-------|--------|
+| PR2 native tiled = bridge-preprocess | **0.358** (pack ≤640, casi 1 tile) |
+| Pad@1920 bridge-preprocess (n=5) | **0.20** bbox_match / ~4.6 s |
+| Pad@1920 tiled (n=5, 8–20 tiles) | **0.24** bbox_match / ~51.8 s |
+
+**Decisión:** `ENABLE_INFER_TILING` **sigue `false`**. Ganancia de match despreciable y latencia ~11×; no hay pack hires nativo.
+
 ---
 
 ## Fuera de estos tres PRs
 - CLAHE; deskew; borrar small_objects; tiling extended; UI polígonos; `run_coroutine_threadsafe`.
+- Activar `ENABLE_INFER_TILING=true` por default (pendiente pack hires real).
 
 ---
 
 ## Orden de merge
-1. PR1 → baseline a **960** + `INFER_SLICE_WH` propuesto (sin cambiar default de ancho).
-2. PR2 → sync core + invariante hires + deps OpenCV + default **1920** + harness tiles.
-3. PR3 → remap class_id + NMS-B + zonas (SCHEMA 1.0 aditivo).
+1. PR1 → baseline a **960** + `INFER_SLICE_WH` propuesto (sin cambiar default de ancho). ✅
+2. PR2 → sync core + invariante hires + deps OpenCV + default **1920** + harness tiles. ✅
+3. PR3 → remap class_id + NMS-B + zonas (SCHEMA 1.0 aditivo). ✅
