@@ -8,8 +8,9 @@ del vocabulario fijo de `objects`/`signs` (p. ej. EPP).
 ## Cómo funciona
 
 1. `ENABLE_OPEN_VOCAB=true` + servicio `paddlex-open-vocab` `:8093`.
-2. Prompt vía `OPEN_VOCAB_PROMPT` (default `person,car,traffic sign`).
-3. Emite `entity_type:"open_vocab"`.
+2. Prompt vía `OPEN_VOCAB_PROMPT` (default `person,car` — **sin** `"traffic sign"`;
+   ownership de "señal" es de `detection/signs`).
+3. Emite `entity_type:"open_vocab"` / tracks `ov-*`. Body vía `build_open_vocab_body`.
 
 ## Modelo (CPU)
 

@@ -17,7 +17,7 @@ for port_name in \
   "8085:scene" \
   "8086:pose" \
   "8087:face_id" \
-  "8088:signs"
+  "8093:signs"
 do
   port="${port_name%%:*}"
   name="${port_name##*:}"

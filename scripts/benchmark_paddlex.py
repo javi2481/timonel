@@ -84,10 +84,10 @@ TARGETS: list[tuple[str, str, str, str, str]] = [
     ),
     (
         "signs",
-        "PADDLEX_SIGNS_URL",
-        "http://127.0.0.1:8088",
-        "PADDLEX_SIGNS_PREDICT_PATH",
-        "/object-detection",
+        "PADDLEX_SIGNS_OV_URL",
+        "http://127.0.0.1:8093",
+        "PADDLEX_SIGNS_OV_PREDICT_PATH",
+        "/open-vocabulary-detection",
     ),
     (
         "scene_cls",
@@ -126,11 +126,13 @@ TARGETS: list[tuple[str, str, str, str, str]] = [
     ),
 ]
 
-# open_vocab necesita prompt en el body (además de image). Mismo default que
-# detection/open_vocab/client.py.
-OPEN_VOCAB_PROMPT = os.getenv("OPEN_VOCAB_PROMPT", "person,car,traffic sign")
-# YOLO-World: sin thresholds en el body el serving no aplica el del yaml.
+# open_vocab / signs OV: body vía build_open_vocab_body (paridad producción).
+OPEN_VOCAB_PROMPT = os.getenv("OPEN_VOCAB_PROMPT", "person,car")
 OPEN_VOCAB_THRESHOLD = float(os.getenv("OPEN_VOCAB_THRESHOLD", "0.05"))
+SIGNS_OV_PROMPT = os.getenv(
+    "SIGNS_OV_PROMPT", "traffic sign,stop sign,traffic light"
+)
+SIGNS_OV_THRESHOLD = float(os.getenv("SIGNS_OV_THRESHOLD", "0.05"))
 
 
 def _placeholder_jpeg() -> bytes:
@@ -188,10 +190,20 @@ def bench_one(
     payload: dict[str, Any] = {key: jpeg_b64}
     if key == "file":
         payload["fileType"] = 1
-    # open_vocab exige prompt junto a la imagen
-    if name == "open_vocab":
-        payload["prompt"] = OPEN_VOCAB_PROMPT
-        payload["thresholds"] = {"threshold": OPEN_VOCAB_THRESHOLD}
+    # open_vocab / signs (OV) — mismo builder que producción.
+    if name in ("open_vocab", "signs"):
+        from detection.common.paddlex_client import build_open_vocab_body
+        import base64 as _b64
+
+        raw = _b64.b64decode(jpeg_b64)
+        if name == "signs":
+            payload = build_open_vocab_body(
+                raw, prompt=SIGNS_OV_PROMPT, threshold=SIGNS_OV_THRESHOLD
+            )
+        else:
+            payload = build_open_vocab_body(
+                raw, prompt=OPEN_VOCAB_PROMPT, threshold=OPEN_VOCAB_THRESHOLD
+            )
 
     times: list[float] = []
     last_status = 0

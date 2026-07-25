@@ -197,7 +197,10 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8087/docs || curl -fsS http://127.0.0.1:8087/openapi.json || exit 1"]
       <<: *paddlex-health
 
+  # Legacy COCO signs (:8088). Opt-in: docker compose --profile legacy-signs up paddlex-signs
+  # Producto usa paddlex-open-vocab :8093 (SIGNS_BACKEND=ov). Ver detection/signs/README.
   paddlex-signs:
+    profiles: ["legacy-signs"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-signs:local
     container_name: vi-paddlex-signs
@@ -455,6 +458,12 @@ services:
       - PADDLEX_FACE_ID_URL=${PADDLEX_FACE_ID_URL:-http://paddlex-face-id:8087}
       - FACE_ID_INDEX_KEY=${FACE_ID_INDEX_KEY:-}
       - ENABLE_SIGNS=${ENABLE_SIGNS:-false}
+      # Producto: YOLO-World vía open-vocab. Legacy COCO: SIGNS_BACKEND=coco + profile legacy-signs.
+      - SIGNS_BACKEND=${SIGNS_BACKEND:-ov}
+      - PADDLEX_SIGNS_OV_URL=${PADDLEX_SIGNS_OV_URL:-http://paddlex-open-vocab:8093}
+      - PADDLEX_SIGNS_OV_PREDICT_PATH=${PADDLEX_SIGNS_OV_PREDICT_PATH:-/open-vocabulary-detection}
+      - SIGNS_OV_PROMPT=${SIGNS_OV_PROMPT:-traffic sign,stop sign,traffic light}
+      - SIGNS_OV_THRESHOLD=${SIGNS_OV_THRESHOLD:-0.05}
       - PADDLEX_SIGNS_URL=${PADDLEX_SIGNS_URL:-http://paddlex-signs:8088}
       - SIGNS_LABELS=${SIGNS_LABELS:-}
       - SIGNS_THRESHOLD=${SIGNS_THRESHOLD:-0.1}
@@ -468,7 +477,8 @@ services:
       - PADDLEX_ANOMALY_URL=${PADDLEX_ANOMALY_URL:-http://paddlex-anomaly:8092}
       - ENABLE_OPEN_VOCAB=${ENABLE_OPEN_VOCAB:-false}
       - PADDLEX_OPEN_VOCAB_URL=${PADDLEX_OPEN_VOCAB_URL:-http://paddlex-open-vocab:8093}
-      - OPEN_VOCAB_PROMPT=${OPEN_VOCAB_PROMPT:-person,car,traffic sign}
+      # Sin "traffic sign": ownership exclusiva de la capacidad signs.
+      - OPEN_VOCAB_PROMPT=${OPEN_VOCAB_PROMPT:-person,car}
       - OPEN_VOCAB_THRESHOLD=${OPEN_VOCAB_THRESHOLD:-0.05}
     volumes:
       - ./detection:/app/detection:ro

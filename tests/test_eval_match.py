@@ -176,6 +176,9 @@ class PackRegistryTests(unittest.TestCase):
         self.assertIn(":8091", ALL_TARGETS["small_objects"][1])
         self.assertIn(":8092", ALL_TARGETS["anomaly"][1])
         self.assertIn(":8093", ALL_TARGETS["open_vocab"][1])
+        # signs producto → OV :8093 (no COCO :8088); eval_baseline signs = legacy decorativo
+        self.assertIn(":8093", ALL_TARGETS["signs"][1])
+        self.assertEqual(ALL_TARGETS["signs"][4], "signs_ov")
 
 
 class ExtendedThresholdTests(unittest.TestCase):

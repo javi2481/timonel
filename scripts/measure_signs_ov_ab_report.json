@@ -1,0 +1,513 @@
+{
+  "signs_url": "http://127.0.0.1:8088",
+  "ov_url": "http://127.0.0.1:8093",
+  "signs_healthy": true,
+  "ov_healthy": true,
+  "fo_signs_count": 2,
+  "ar_count": 0,
+  "ar_pending": true,
+  "fo_results": [
+    {
+      "name": "Baseline@960",
+      "kind": "coco",
+      "prompt": null,
+      "threshold": 0.1,
+      "max_width": 960,
+      "tp": 0,
+      "fp": 3,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 3,
+      "n_gt": 4,
+      "elapsed_s": 0.86,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 3,
+          "tp": 0,
+          "labels": [
+            "traffic light",
+            "traffic light",
+            "fire hydrant"
+          ],
+          "scores": [
+            0.191,
+            0.12,
+            0.129
+          ]
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-A@960/thr=0.05",
+      "kind": "ov",
+      "prompt": "traffic sign",
+      "threshold": 0.05,
+      "max_width": 960,
+      "tag": "OV-A",
+      "res": "960",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 3.01,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-A@hires/thr=0.05",
+      "kind": "ov",
+      "prompt": "traffic sign",
+      "threshold": 0.05,
+      "max_width": null,
+      "tag": "OV-A",
+      "res": "hires",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 1.61,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-A@960/thr=0.1",
+      "kind": "ov",
+      "prompt": "traffic sign",
+      "threshold": 0.1,
+      "max_width": 960,
+      "tag": "OV-A",
+      "res": "960",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 1.46,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-A@hires/thr=0.1",
+      "kind": "ov",
+      "prompt": "traffic sign",
+      "threshold": 0.1,
+      "max_width": null,
+      "tag": "OV-A",
+      "res": "hires",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 1.49,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-A@960/thr=0.2",
+      "kind": "ov",
+      "prompt": "traffic sign",
+      "threshold": 0.2,
+      "max_width": 960,
+      "tag": "OV-A",
+      "res": "960",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 1.83,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-A@hires/thr=0.2",
+      "kind": "ov",
+      "prompt": "traffic sign",
+      "threshold": 0.2,
+      "max_width": null,
+      "tag": "OV-A",
+      "res": "hires",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 1.84,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-B@960/thr=0.05",
+      "kind": "ov",
+      "prompt": "traffic sign,stop sign,traffic light",
+      "threshold": 0.05,
+      "max_width": 960,
+      "tag": "OV-B",
+      "res": "960",
+      "tp": 2,
+      "fp": 1,
+      "fn": 2,
+      "precision": 0.6667,
+      "recall": 0.5,
+      "n_pred": 3,
+      "n_gt": 4,
+      "elapsed_s": 1.75,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 1,
+          "tp": 1,
+          "labels": [
+            "traffic light"
+          ],
+          "scores": [
+            0.053
+          ]
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 2,
+          "tp": 1,
+          "labels": [
+            "traffic sign",
+            "stop sign"
+          ],
+          "scores": [
+            0.052,
+            0.06
+          ]
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-B@hires/thr=0.05",
+      "kind": "ov",
+      "prompt": "traffic sign,stop sign,traffic light",
+      "threshold": 0.05,
+      "max_width": null,
+      "tag": "OV-B",
+      "res": "hires",
+      "tp": 2,
+      "fp": 1,
+      "fn": 2,
+      "precision": 0.6667,
+      "recall": 0.5,
+      "n_pred": 3,
+      "n_gt": 4,
+      "elapsed_s": 1.51,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 1,
+          "tp": 1,
+          "labels": [
+            "traffic light"
+          ],
+          "scores": [
+            0.053
+          ]
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 2,
+          "tp": 1,
+          "labels": [
+            "traffic sign",
+            "stop sign"
+          ],
+          "scores": [
+            0.052,
+            0.06
+          ]
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-B@960/thr=0.1",
+      "kind": "ov",
+      "prompt": "traffic sign,stop sign,traffic light",
+      "threshold": 0.1,
+      "max_width": 960,
+      "tag": "OV-B",
+      "res": "960",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 1.47,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-B@hires/thr=0.1",
+      "kind": "ov",
+      "prompt": "traffic sign,stop sign,traffic light",
+      "threshold": 0.1,
+      "max_width": null,
+      "tag": "OV-B",
+      "res": "hires",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 1.63,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-B@960/thr=0.2",
+      "kind": "ov",
+      "prompt": "traffic sign,stop sign,traffic light",
+      "threshold": 0.2,
+      "max_width": 960,
+      "tag": "OV-B",
+      "res": "960",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 2.34,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    },
+    {
+      "name": "OV-B@hires/thr=0.2",
+      "kind": "ov",
+      "prompt": "traffic sign,stop sign,traffic light",
+      "threshold": 0.2,
+      "max_width": null,
+      "tag": "OV-B",
+      "res": "hires",
+      "tp": 0,
+      "fp": 0,
+      "fn": 4,
+      "precision": 0.0,
+      "recall": 0.0,
+      "n_pred": 0,
+      "n_gt": 4,
+      "elapsed_s": 2.0,
+      "per_image": [
+        {
+          "id": "signs_0001",
+          "n_gt": 3,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        },
+        {
+          "id": "signs_0002",
+          "n_gt": 1,
+          "n_pred": 0,
+          "tp": 0,
+          "labels": [],
+          "scores": []
+        }
+      ],
+      "error": null
+    }
+  ],
+  "ar_results": [],
+  "recommendation": {
+    "SIGNS_OV_PROMPT": "traffic sign,stop sign,traffic light",
+    "SIGNS_OV_THRESHOLD": 0.05,
+    "note": "propuesto por medición fo_signs@960; gate humano confirma"
+  },
+  "resolution_verdict": "cerrar_frame: OV@960 alcanza; no tocar BRIDGE_MAX_WIDTH/tiling",
+  "builder": "detection.common.paddlex_client.build_open_vocab_body"
+}

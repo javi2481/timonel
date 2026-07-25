@@ -42,6 +42,21 @@ def _build_predict_body(
     return body
 
 
+def build_open_vocab_body(
+    jpeg: bytes, *, prompt: str, threshold: float
+) -> dict[str, Any]:
+    """Body canónico open-vocabulary-detection (paridad medición == producción).
+
+    Exactamente ``{"image", "prompt", "thresholds": {"threshold": ...}}``.
+    Lo usan infer_open_vocab, infer_signs (OV) y scripts/measure_signs_ov_ab.py.
+    """
+    return {
+        "image": base64.b64encode(jpeg).decode("ascii"),
+        "prompt": prompt,
+        "thresholds": {"threshold": float(threshold)},
+    }
+
+
 def _handle_predict_payload(
     data: Any,
     *,

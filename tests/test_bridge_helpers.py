@@ -607,7 +607,35 @@ class NormalizePoseAndTextTests(unittest.TestCase):
         self.assertEqual(dets[0]["text"], "STOP")
         self.assertEqual(dets[0]["entity_type"], "text")
 
-    def test_signs_filter(self) -> None:
+    def test_signs_ov_collapse_label(self) -> None:
+        from detection.signs import normalize_signs_result
+
+        dets = normalize_signs_result(
+            {
+                "result": {
+                    "detectedObjects": [
+                        {
+                            "categoryName": "traffic sign",
+                            "score": 0.9,
+                            "bbox": [1, 2, 3, 4],
+                        },
+                        {
+                            "categoryName": "stop sign",
+                            "score": 0.8,
+                            "bbox": [5, 6, 7, 8],
+                        },
+                    ]
+                }
+            },
+            backend="ov",
+        )
+        self.assertEqual(len(dets), 2)
+        self.assertTrue(all(d["label"] == "sign" for d in dets))
+        self.assertTrue(all(d["entity_type"] == "sign" for d in dets))
+        self.assertTrue(all(d["track_id"].startswith("s-") for d in dets))
+        self.assertEqual(dets[0]["hint"], "traffic sign")
+
+    def test_signs_coco_legacy_filter(self) -> None:
         from detection.signs import normalize_signs_result
 
         dets = normalize_signs_result(
@@ -626,10 +654,12 @@ class NormalizePoseAndTextTests(unittest.TestCase):
                         },
                     ]
                 }
-            }
+            },
+            backend="coco",
         )
         self.assertEqual(len(dets), 1)
         self.assertEqual(dets[0]["entity_type"], "sign")
+        self.assertEqual(dets[0]["label"], "stop sign")
 
 if __name__ == "__main__":
     unittest.main()

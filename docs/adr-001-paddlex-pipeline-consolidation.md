@@ -77,3 +77,19 @@ Las 13 capacidades corren juntas bajo el techo único `x-limits-paddlex`
 
 - Sigue el mapa carpeta ↔ capacidad ↔ servicio del README.
 - La reducción de huella inmediata es operativa (`mem_limit` por contenedor, apagar capacidades vía `ENABLE_*`), no arquitectónica.
+
+## Enmienda (2026-07-25) — signs + open_vocab sobre `:8093`
+
+**Desviación consciente del invariante 1 carpeta = 1 capacidad = 1 servicio:**
+dos clients (`detection/signs`, `detection/open_vocab`) pegan al mismo proceso
+`paddlex-open-vocab` `:8093` (YOLO-Worldv2-L) con prompts distintos. Consolida
+y apaga `paddlex-signs` `:8088` (Compose `profiles: ["legacy-signs"]`).
+
+| Tema | Decisión |
+|------|----------|
+| Ownership de "señal" | Exclusiva de `signs` (`entity_type:"sign"` / `s-*`). `OPEN_VOCAB_PROMPT` **sin** `"traffic sign"`. |
+| Label | Colapsado a `"sign"`; `categoryName`+score como `hint`. |
+| Perillas | `SIGNS_OV_PROMPT` + `SIGNS_OV_THRESHOLD` (no heredar `SIGNS_THRESHOLD`). |
+| SPOF | Si `:8093` cae, **signs + open_vocab** fallan en el POST. `available` sigue saliendo de `ENABLE_*` sin probe HTTP (preexistente) — ahora arrastra dos caps. Trade-off aceptado frente a liberar ~2 GiB del servicio COCO. |
+| Rollback | `docker compose --profile legacy-signs up -d paddlex-signs` + `SIGNS_BACKEND=coco` + `PADDLEX_SIGNS_URL=http://paddlex-signs:8088`. |
+| Gate eval | El número `signs` en `scripts/eval_baseline.json` es **baseline COCO legacy decorativo**, no el path de producto OV. |

@@ -112,12 +112,13 @@ ALL_TARGETS: dict[str, tuple[str, str, str, str, str]] = {
         "/face-recognition-infer",
         "image",
     ),
+    # Producto: YOLO-World vía open-vocab. eval_baseline.json signs = COCO legacy decorativo.
     "signs": (
-        "PADDLEX_SIGNS_URL",
-        "http://127.0.0.1:8088",
-        "PADDLEX_SIGNS_PREDICT_PATH",
-        "/object-detection",
-        "image",
+        "PADDLEX_SIGNS_OV_URL",
+        "http://127.0.0.1:8093",
+        "PADDLEX_SIGNS_OV_PREDICT_PATH",
+        "/open-vocabulary-detection",
+        "signs_ov",
     ),
     "scene_cls": (
         "PADDLEX_SCENE_CLS_URL",
@@ -423,8 +424,19 @@ def _predict(
     if mode == "file":
         payload: dict[str, Any] = {"file": b64, "fileType": 1}
     elif mode == "open_vocab":
-        prompt = os.getenv("OPEN_VOCAB_PROMPT", "person,car,traffic sign")
-        payload = {"image": b64, "prompt": prompt}
+        from detection.common.paddlex_client import build_open_vocab_body
+
+        prompt = os.getenv("OPEN_VOCAB_PROMPT", "person,car")
+        thr = float(os.getenv("OPEN_VOCAB_THRESHOLD", "0.05"))
+        payload = build_open_vocab_body(jpeg, prompt=prompt, threshold=thr)
+    elif mode == "signs_ov":
+        from detection.common.paddlex_client import build_open_vocab_body
+
+        prompt = os.getenv(
+            "SIGNS_OV_PROMPT", "traffic sign,stop sign,traffic light"
+        )
+        thr = float(os.getenv("SIGNS_OV_THRESHOLD", "0.05"))
+        payload = build_open_vocab_body(jpeg, prompt=prompt, threshold=thr)
     else:
         payload = {"image": b64}
         if suite in {"scene_cls", "anomaly", "face_id", "faces"}:

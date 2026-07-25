@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 import os
 from datetime import datetime, timezone
@@ -10,6 +9,7 @@ from typing import Any, Optional
 
 import httpx
 
+from detection.common.paddlex_client import build_open_vocab_body
 from detection.common.tracking import IoUTracker
 
 logger = logging.getLogger("detection.open_vocab")
@@ -22,7 +22,8 @@ ENABLE_OPEN_VOCAB = os.getenv("ENABLE_OPEN_VOCAB", "false").strip().lower() in (
     "true",
     "yes",
 )
-OPEN_VOCAB_PROMPT = os.getenv("OPEN_VOCAB_PROMPT", "person,car,traffic sign")
+# Ownership: "señal" es exclusiva de la capacidad signs. No incluir "traffic sign".
+OPEN_VOCAB_PROMPT = os.getenv("OPEN_VOCAB_PROMPT", "person,car")
 # PaddleX pipeline guarda thresholds en self pero no los aplica si el request
 # no manda override (bug upstream). El client siempre envía el dict.
 OPEN_VOCAB_THRESHOLD = float(os.getenv("OPEN_VOCAB_THRESHOLD", "0.05"))
@@ -81,11 +82,9 @@ async def infer_open_vocab(
     try:
         resp = await client.post(
             url,
-            json={
-                "image": base64.b64encode(jpeg).decode("ascii"),
-                "prompt": OPEN_VOCAB_PROMPT,
-                "thresholds": {"threshold": OPEN_VOCAB_THRESHOLD},
-            },
+            json=build_open_vocab_body(
+                jpeg, prompt=OPEN_VOCAB_PROMPT, threshold=OPEN_VOCAB_THRESHOLD
+            ),
             timeout=HTTP_TIMEOUT,
         )
         resp.raise_for_status()
