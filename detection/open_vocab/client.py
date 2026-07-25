@@ -23,15 +23,24 @@ ENABLE_OPEN_VOCAB = os.getenv("ENABLE_OPEN_VOCAB", "false").strip().lower() in (
     "yes",
 )
 OPEN_VOCAB_PROMPT = os.getenv("OPEN_VOCAB_PROMPT", "person,car,traffic sign")
+# PaddleX pipeline guarda thresholds en self pero no los aplica si el request
+# no manda override (bug upstream). El client siempre envía el dict.
+OPEN_VOCAB_THRESHOLD = float(os.getenv("OPEN_VOCAB_THRESHOLD", "0.05"))
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30.0"))
 _tracker = IoUTracker(0.3)
 
 
 def normalize_open_vocab_result(data: dict[str, Any]) -> list[dict[str, Any]]:
     result = data.get("result", data)
-    boxes = result.get("boxes") if isinstance(result, dict) else []
+    # Serving 3.7 YOLO-World → detectedObjects[{bbox,categoryName,score}];
+    # create_model / older shape → boxes[{coordinate|bbox,label,score}].
+    boxes: list[Any] = []
+    if isinstance(result, dict):
+        raw = result.get("detectedObjects") or result.get("boxes") or []
+        if isinstance(raw, list):
+            boxes = raw
     coords, meta = [], []
-    for box in boxes if isinstance(boxes, list) else []:
+    for box in boxes:
         if not isinstance(box, dict):
             continue
         coord = box.get("coordinate") or box.get("bbox")
@@ -41,7 +50,9 @@ def normalize_open_vocab_result(data: dict[str, Any]) -> list[dict[str, Any]]:
         coords.append(bbox)
         meta.append(
             {
-                "label": str(box.get("label") or "open"),
+                "label": str(
+                    box.get("categoryName") or box.get("label") or "open"
+                ),
                 "score": float(box.get("score") or 0.0),
                 "bbox": bbox,
             }
@@ -73,6 +84,7 @@ async def infer_open_vocab(
             json={
                 "image": base64.b64encode(jpeg).decode("ascii"),
                 "prompt": OPEN_VOCAB_PROMPT,
+                "thresholds": {"threshold": OPEN_VOCAB_THRESHOLD},
             },
             timeout=HTTP_TIMEOUT,
         )

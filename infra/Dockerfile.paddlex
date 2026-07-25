@@ -45,6 +45,11 @@ COPY detection/faces/pipeline.yaml /opt/paddlex/pipelines/face_detection.yaml
 # PaddleX 3.7.2 serving bug: class_ids shape (1,K) → 500 on /image-classification.
 COPY infra/patches/paddlex_image_classification.py \
   /usr/local/lib/python3.10/dist-packages/paddlex/inference/serving/basic_serving/_pipeline_apps/image_classification.py
+# PaddleX 3.7.2 FaissBuilder: face features (N,1,D) → ValueError unpack in index-build.
+COPY infra/patches/paddlex_faisser.py \
+  /usr/local/lib/python3.10/dist-packages/paddlex/inference/pipelines/components/faisser.py
+# open_vocab CPU: YOLO-Worldv2-L (GroundingDINO-T reshape 500 en paddle 3.0.0 CPU).
+COPY detection/open_vocab/pipeline.yaml /opt/paddlex/pipelines/open_vocab_yoloworld.yaml
 
 EXPOSE 8080
 

@@ -129,6 +129,8 @@ TARGETS: list[tuple[str, str, str, str, str]] = [
 # open_vocab necesita prompt en el body (además de image). Mismo default que
 # detection/open_vocab/client.py.
 OPEN_VOCAB_PROMPT = os.getenv("OPEN_VOCAB_PROMPT", "person,car,traffic sign")
+# YOLO-World: sin thresholds en el body el serving no aplica el del yaml.
+OPEN_VOCAB_THRESHOLD = float(os.getenv("OPEN_VOCAB_THRESHOLD", "0.05"))
 
 
 def _placeholder_jpeg() -> bytes:
@@ -189,6 +191,7 @@ def bench_one(
     # open_vocab exige prompt junto a la imagen
     if name == "open_vocab":
         payload["prompt"] = OPEN_VOCAB_PROMPT
+        payload["thresholds"] = {"threshold": OPEN_VOCAB_THRESHOLD}
 
     times: list[float] = []
     last_status = 0
