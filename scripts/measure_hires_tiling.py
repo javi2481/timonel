@@ -171,7 +171,7 @@ def main() -> int:
 
     b_rate = rate(tp_b, gt_n)
     t_rate = rate(tp_t, gt_n)
-    # Match-only hint; ops decision also weighs latency (see docs/plans/hires-tiling-measure.md).
+    # Match-only hint; ops decision also weighs latency (see docs/archive/tiling-nms/hires-tiling-measure.md).
     if t_rate > b_rate:
         decision = (
             f"match_up (+{round(t_rate - b_rate, 4)}); "

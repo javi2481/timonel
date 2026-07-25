@@ -4,7 +4,8 @@
 Runs offline for histograms (no PaddleX required). Optional --live posts a
 sample JPEG to vehicles/objects and records decoded result.image size if present.
 
-Baseline assumes BRIDGE_MAX_WIDTH default 960 (do not raise in PR1).
+Historical PR1 baseline: this script measures as if BRIDGE_MAX_WIDTH=960
+(the product default today is 1920; do not treat 960 as current product state).
 
 Usage:
   PYTHONPATH=. python scripts/measure_infer_slice.py --out imagenes_muestra
