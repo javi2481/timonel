@@ -29,6 +29,9 @@ ENABLE_SIGNS = os.getenv("ENABLE_SIGNS", "false").strip().lower() in (
 )
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30.0"))
 IOU_THRESHOLD = float(os.getenv("TRACK_IOU_THRESHOLD", "0.3"))
+# El detector COCO genérico no dispara señales (traffic light/stop sign) al
+# threshold default 0.5. A 0.1 sí; el ruido extra lo descarta SIGN_LABELS.
+SIGNS_THRESHOLD = float(os.getenv("SIGNS_THRESHOLD", "0.1"))
 
 # COCO + nombres típicos de fine-tune
 DEFAULT_SIGN_LABELS = {
@@ -64,20 +67,25 @@ def normalize_signs_result(data: dict[str, Any]) -> list[dict[str, Any]]:
     result = data.get("result", data)
     boxes: list[dict[str, Any]] = []
     if isinstance(result, dict):
-        raw = result.get("boxes") or []
+        # Serving 3.7: detectedObjects[{bbox,categoryName,score}].
+        raw = result.get("detectedObjects") or result.get("boxes") or []
         if isinstance(raw, list):
             boxes = raw
     elif isinstance(result, list):
         for item in result:
-            if isinstance(item, dict) and "boxes" in item:
-                boxes.extend(item.get("boxes") or [])
+            if isinstance(item, dict):
+                boxes.extend(
+                    item.get("detectedObjects") or item.get("boxes") or []
+                )
 
     coords: list[list[float]] = []
     meta: list[dict[str, Any]] = []
     for box in boxes:
         if not isinstance(box, dict):
             continue
-        label = str(box.get("label") or box.get("cls_name") or "").strip().lower()
+        label = str(
+            box.get("categoryName") or box.get("label") or box.get("cls_name") or ""
+        ).strip().lower()
         if SIGN_LABELS and label not in SIGN_LABELS:
             continue
         coord = box.get("coordinate") or box.get("bbox")
@@ -113,7 +121,9 @@ async def infer_signs(
     b64 = base64.b64encode(jpeg).decode("ascii")
     try:
         resp = await client.post(
-            url, json={"image": b64}, timeout=HTTP_TIMEOUT
+            url,
+            json={"image": b64, "threshold": SIGNS_THRESHOLD},
+            timeout=HTTP_TIMEOUT,
         )
         resp.raise_for_status()
         data = resp.json()

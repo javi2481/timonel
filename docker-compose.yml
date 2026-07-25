@@ -457,6 +457,7 @@ services:
       - ENABLE_SIGNS=${ENABLE_SIGNS:-false}
       - PADDLEX_SIGNS_URL=${PADDLEX_SIGNS_URL:-http://paddlex-signs:8088}
       - SIGNS_LABELS=${SIGNS_LABELS:-}
+      - SIGNS_THRESHOLD=${SIGNS_THRESHOLD:-0.1}
       - ENABLE_SCENE_CLS=${ENABLE_SCENE_CLS:-false}
       - PADDLEX_SCENE_CLS_URL=${PADDLEX_SCENE_CLS_URL:-http://paddlex-scene-cls:8089}
       - ENABLE_INSTANCE_SEG=${ENABLE_INSTANCE_SEG:-false}
