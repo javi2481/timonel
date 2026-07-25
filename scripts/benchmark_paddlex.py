@@ -89,7 +89,46 @@ TARGETS: list[tuple[str, str, str, str, str]] = [
         "PADDLEX_SIGNS_PREDICT_PATH",
         "/object-detection",
     ),
+    (
+        "scene_cls",
+        "PADDLEX_SCENE_CLS_URL",
+        "http://127.0.0.1:8089",
+        "PADDLEX_SCENE_CLS_PREDICT_PATH",
+        "/image-classification",
+    ),
+    (
+        "instances",
+        "PADDLEX_INSTANCES_URL",
+        "http://127.0.0.1:8090",
+        "PADDLEX_INSTANCES_PREDICT_PATH",
+        "/instance-segmentation",
+    ),
+    (
+        "small_objects",
+        "PADDLEX_SMALL_OBJECTS_URL",
+        "http://127.0.0.1:8091",
+        "PADDLEX_SMALL_OBJECTS_PREDICT_PATH",
+        "/small-object-detection",
+    ),
+    (
+        "anomaly",
+        "PADDLEX_ANOMALY_URL",
+        "http://127.0.0.1:8092",
+        "PADDLEX_ANOMALY_PREDICT_PATH",
+        "/image-anomaly-detection",
+    ),
+    (
+        "open_vocab",
+        "PADDLEX_OPEN_VOCAB_URL",
+        "http://127.0.0.1:8093",
+        "PADDLEX_OPEN_VOCAB_PREDICT_PATH",
+        "/open-vocabulary-detection",
+    ),
 ]
+
+# open_vocab necesita prompt en el body (además de image). Mismo default que
+# detection/open_vocab/client.py.
+OPEN_VOCAB_PROMPT = os.getenv("OPEN_VOCAB_PROMPT", "person,car,traffic sign")
 
 
 def _placeholder_jpeg() -> bytes:
@@ -147,6 +186,9 @@ def bench_one(
     payload: dict[str, Any] = {key: jpeg_b64}
     if key == "file":
         payload["fileType"] = 1
+    # open_vocab exige prompt junto a la imagen
+    if name == "open_vocab":
+        payload["prompt"] = OPEN_VOCAB_PROMPT
 
     times: list[float] = []
     last_status = 0

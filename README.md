@@ -57,21 +57,11 @@ docker compose up --build
 
 ### RAM del host
 
-| Máquina | Qué levantar | `mem_limit` paddlex |
-|---------|--------------|---------------------|
-| Notebook **~8 GB** | Solo profile **default** (~3 servicios) | ~1.2g c/u (anchor `limits-default`) |
-| Desktop **~32 GB** | **default + extended** | ~2g c/u (`limits-extended`) |
-| Experimental | Solo con ≥32 GB y opt-in | mismos techos extended |
-
-No levantes `--profile extended` en 8 GB: aunque haya techos, no cabe el presupuesto de modelos.
-Si un servicio muere `OOMKilled`, subí su `mem_limit` en compose o bajá `BRIDGE_MAX_WIDTH`.
-
-Capacidades extended (rostros / attrs persona / escena) — **desktop 32 GB**:
-
-```bash
-# En .env: ENABLE_FACE_DETECTION=true ENABLE_PEDESTRIAN_ATTRS=true ENABLE_SCENE_SEG=true
-docker compose --profile extended up --build
-```
+Host de referencia: **PC-Javier** — 32 GB RAM, Ryzen 5 8500G (6c/12t), sin GPU
+NVIDIA. Un solo `docker compose up` levanta las 13 capacidades paddlex + adapter
++ bridge, con techo único `mem_limit ~2g` por contenedor (anchor `x-limits-paddlex`).
+El cuello esperado en este host es CPU, no RAM. Si un servicio muere `OOMKilled`,
+subí su `mem_limit` en compose o bajá `BRIDGE_MAX_WIDTH`.
 
 | Recurso | URL |
 |---------|-----|
@@ -81,13 +71,13 @@ docker compose --profile extended up --build
 | PaddleX vehicles | http://localhost:8080 |
 | PaddleX OCR | http://localhost:8081 |
 | PaddleX objects | http://localhost:8082 |
-| PaddleX faces | http://localhost:8083 (extended) |
-| PaddleX pedestrians | http://localhost:8084 (extended) |
-| PaddleX scene | http://localhost:8085 (extended) |
-| PaddleX pose | http://localhost:8086 (extended) |
-| PaddleX face_id | http://localhost:8087 (extended) |
-| PaddleX signs | http://localhost:8088 (extended) |
-| Medio fit | http://localhost:8089–8093 (`experimental`) |
+| PaddleX faces | http://localhost:8083 |
+| PaddleX pedestrians | http://localhost:8084 |
+| PaddleX scene | http://localhost:8085 |
+| PaddleX pose | http://localhost:8086 |
+| PaddleX face_id | http://localhost:8087 |
+| PaddleX signs | http://localhost:8088 |
+| Medio fit | http://localhost:8089–8093 |
 
 ## Flujo foto
 
@@ -100,12 +90,10 @@ docker compose --profile extended up --build
 
 | Comando | Efecto |
 |---------|--------|
-| `docker compose up --build` | paddlex* default + adapter + bridge |
-| `docker compose --profile extended up --build` | + faces, pedestrians, scene, pose, face_id, signs |
-| `docker compose --profile experimental up --build` | + scene_cls, instances, small_objects, anomaly, open_vocab (GATE) |
+| `docker compose up --build` | las 13 capacidades paddlex + adapter + bridge |
 | `docker compose --profile demo up --build` | bridge sintético |
 | `docker compose --profile rules up --build` | + JetLinks + rules-sink |
-| `docker compose --profile gpu up --build` | PaddleX GPU |
+| `docker compose --profile gpu up --build` | PaddleX GPU (requiere NVIDIA; no aplica en PC-Javier) |
 
 ## Variables útiles
 

@@ -12,9 +12,8 @@
 
 services:
   paddlex-objects:
-    # L midió ~965MiB contra el techo default de 1200m (82%): sin este bump,
-    # una foto más grande lo tira por OOM. En notebook 8 GB, compite con el resto.
-    mem_limit: 1600m
+    # L midió ~965MiB; entra en el techo único de 2000m (x-limits-paddlex) sin
+    # override de mem_limit. Solo swapea el pipeline a PP-YOLOE_plus-L.
     environment:
       - VI_PIPELINE=/opt/paddlex/pipelines/object_detection_yoloe_exp.yaml
     volumes:

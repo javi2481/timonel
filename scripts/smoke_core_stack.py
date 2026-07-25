@@ -34,8 +34,11 @@ EXPECT_PLATE_OCR = os.getenv("EXPECT_PLATE_OCR", "false").strip().lower() in (
 # fo_vehicles_0001 suele dar 0 boxes en PP-YOLOE local; 0002 tiene hits estables.
 VEHICLES_PHOTO = os.getenv("SMOKE_VEHICLES_PHOTO", "fo_vehicles_0002.jpg")
 OBJECTS_PHOTO = os.getenv("SMOKE_OBJECTS_PHOTO", "fo_objects_0001.jpg")
-# Si true (default): PUT /capabilities con solo vehicle+object activos (Core).
-PIN_CORE_CAPS = os.getenv("SMOKE_PIN_CORE_CAPS", "true").strip().lower() in (
+# Si true: PUT /capabilities con solo vehicle+object activos (Core) durante el
+# smoke. Default false — no dejar el adapter pinneado a Core al terminar (rompía
+# faces/scene en corridas posteriores). Cuando es true, el estado previo se
+# restaura en un finally.
+PIN_CORE_CAPS = os.getenv("SMOKE_PIN_CORE_CAPS", "false").strip().lower() in (
     "1",
     "true",
     "yes",
@@ -241,6 +244,14 @@ def assert_preview() -> None:
         )
 
 
+def read_active_capabilities() -> Optional[dict[str, bool]]:
+    """Snapshot del mapa active actual, para restaurarlo tras el smoke."""
+    body = http_json("GET", "/capabilities")
+    if not isinstance(body, dict) or "capabilities" not in body:
+        return None
+    return {k: bool(v.get("active")) for k, v in body["capabilities"].items()}
+
+
 def pin_core_capabilities() -> None:
     """Deja solo vehicle+object activos para no mezclar ruido extended."""
     print("== PUT /capabilities Core-only ==")
@@ -255,6 +266,20 @@ def pin_core_capabilities() -> None:
     if extras:
         raise SmokeFail(f"caps extra siguen active: {extras}")
     print(f"  generation={body.get('generation')} active={{vehicle,object}}")
+
+
+def restore_capabilities(prev_active: Optional[dict[str, bool]]) -> None:
+    """Devuelve el adapter al estado active previo al pin."""
+    if not prev_active:
+        return
+    print("== restore /capabilities (estado previo) ==")
+    try:
+        body = http_json("PUT", "/capabilities", {"active": prev_active})
+        gen = body.get("generation") if isinstance(body, dict) else "?"
+        on = sorted(k for k, v in prev_active.items() if v)
+        print(f"  generation={gen} active={on}")
+    except Exception as exc:  # noqa: BLE001 — best-effort cleanup
+        print(f"  WARN: no se pudo restaurar capabilities: {exc}", file=sys.stderr)
 
 
 def run_photo(name: str, kind: str) -> None:
@@ -288,12 +313,14 @@ def main() -> int:
         f"ADAPTER={ADAPTER} EXPECT_PLATE_OCR={_env_bool_label()} "
         f"photos={VEHICLES_PHOTO},{OBJECTS_PHOTO}"
     )
+    prev_active: Optional[dict[str, bool]] = None
     try:
         print("== health ==")
         health = http_json("GET", "/health")
         print(f"  {health}")
 
         if PIN_CORE_CAPS:
+            prev_active = read_active_capabilities()
             pin_core_capabilities()
 
         run_photo(VEHICLES_PHOTO, "vehicles")
@@ -301,6 +328,9 @@ def main() -> int:
     except SmokeFail as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         return 1
+    finally:
+        if PIN_CORE_CAPS:
+            restore_capabilities(prev_active)
     print("PASS smoke_core_stack")
     return 0
 

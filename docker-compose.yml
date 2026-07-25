@@ -2,16 +2,15 @@
 # Orquestar, no inventar. Un solo comando: docker compose up --build
 #
 # Perfiles:
-#   (default)  paddlex + paddlex-objects + paddlex-ocr + adapter + bridge
-#   --profile extended → faces, pedestrians, scene, pose, face_id, signs
-#   --profile experimental → scene_cls, instances, small_objects, anomaly, open_vocab
+#   (default)  las 13 capacidades paddlex + adapter + bridge (docker compose up)
 #   --profile demo   → bridge en DEMO_MODE (sin fotos/GPU)
 #   --profile rules  → JetLinks opcional
-#   --profile gpu    → PaddleX con runtime NVIDIA (requiere NVIDIA Container Toolkit)
+#   --profile gpu    → PaddleX con runtime NVIDIA (requiere NVIDIA Container Toolkit;
+#                      NO aplica en PC-Javier, que solo tiene iGPU AMD)
 #
 # RAM (mem_limit por contenedor paddlex):
-#   - Notebook ~8 GB: solo profile default (límites ~1.2g). NO levantar extended.
-#   - Desktop ~32 GB: default + extended (límites ~2g). experimental opt-in.
+#   Host de referencia PC-Javier: 32 GB / Ryzen 8500G (6c/12t), sin GPU NVIDIA.
+#   Techo único ~2g por contenedor (x-limits-paddlex). Cuello esperado: CPU, no RAM.
 #   Si un servicio OOMKilled, subí su mem_limit o bajá BRIDGE_MAX_WIDTH.
 #
 # Layout: detection/{vehicles,objects,plates,faces,pedestrians,scene} + bridge + adapter.
@@ -31,17 +30,11 @@ x-paddlex-build: &paddlex-build
   args:
     BASE_IMAGE: ${PADDLE_BASE_IMAGE:-paddlepaddle/paddle:3.0.0}
 
-# Techos para notebook 8 GB (solo default: 3 servicios ≈ 3.6g modelos).
-x-limits-default: &limits-default
-  mem_limit: 1200m
-  mem_reservation: 400m
-  cpus: "1.0"
-
-# Techos para desktop 32 GB (extended / experimental).
-x-limits-extended: &limits-extended
+# Techo por contenedor paddlex. Host de referencia: PC-Javier (32 GB, Ryzen 8500G).
+# Sin cpus: — 6c/12t se reparten entre las 13 capacidades; el kernel decide.
+x-limits-paddlex: &limits-paddlex
   mem_limit: 2000m
   mem_reservation: 512m
-  cpus: "1.5"
 
 x-paddlex-health: &paddlex-health
   interval: 30s
@@ -63,7 +56,7 @@ networks:
 
 services:
   paddlex:
-    <<: [*paddlex-cpu, *limits-default]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex:local
     container_name: vi-paddlex
     ports:
@@ -78,7 +71,7 @@ services:
       <<: *paddlex-health
 
   paddlex-ocr:
-    <<: [*paddlex-cpu, *limits-default]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-ocr:local
     container_name: vi-paddlex-ocr
     ports:
@@ -97,7 +90,7 @@ services:
   # Object detection COCO (person, dog, …). Merge en detection/objects.
 
   paddlex-objects:
-    <<: [*paddlex-cpu, *limits-default]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-objects:local
     container_name: vi-paddlex-objects
     ports:
@@ -116,8 +109,7 @@ services:
       <<: *paddlex-health
 
   paddlex-faces:
-    profiles: ["extended"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-faces:local
     container_name: vi-paddlex-faces
     ports:
@@ -136,8 +128,7 @@ services:
       <<: *paddlex-health
 
   paddlex-pedestrians:
-    profiles: ["extended"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-pedestrians:local
     container_name: vi-paddlex-pedestrians
     ports:
@@ -154,8 +145,7 @@ services:
       <<: *paddlex-health
 
   paddlex-scene:
-    profiles: ["extended"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-scene:local
     container_name: vi-paddlex-scene
     ports:
@@ -172,8 +162,7 @@ services:
       <<: *paddlex-health
 
   paddlex-pose:
-    profiles: ["extended"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-pose:local
     container_name: vi-paddlex-pose
     ports:
@@ -190,8 +179,7 @@ services:
       <<: *paddlex-health
 
   paddlex-face-id:
-    profiles: ["extended"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-face-id:local
     container_name: vi-paddlex-face-id
     ports:
@@ -208,8 +196,7 @@ services:
       <<: *paddlex-health
 
   paddlex-signs:
-    profiles: ["extended"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-signs:local
     container_name: vi-paddlex-signs
     ports:
@@ -226,8 +213,7 @@ services:
       <<: *paddlex-health
 
   paddlex-scene-cls:
-    profiles: ["experimental"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-scene-cls:local
     container_name: vi-paddlex-scene-cls
     ports:
@@ -246,8 +232,7 @@ services:
       <<: *paddlex-health
 
   paddlex-instances:
-    profiles: ["experimental"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-instances:local
     container_name: vi-paddlex-instances
     ports:
@@ -264,8 +249,7 @@ services:
       <<: *paddlex-health
 
   paddlex-small-objects:
-    profiles: ["experimental"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-small-objects:local
     container_name: vi-paddlex-small-objects
     ports:
@@ -282,8 +266,7 @@ services:
       <<: *paddlex-health
 
   paddlex-anomaly:
-    profiles: ["experimental"]
-    <<: [*paddlex-cpu, *limits-extended]
+    <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-anomaly:local
     container_name: vi-paddlex-anomaly
     ports:
@@ -300,8 +283,7 @@ services:
       <<: *paddlex-health
 
   paddlex-open-vocab:
-    profiles: ["experimental"]
-    <<: [*limits-extended]
+    <<: [*limits-paddlex]
     build:
       context: .
       dockerfile: infra/Dockerfile.paddlex
@@ -330,7 +312,7 @@ services:
 
   paddlex-gpu:
     profiles: ["gpu"]
-    <<: *limits-extended
+    <<: *limits-paddlex
     build:
       context: .
       dockerfile: infra/Dockerfile.paddlex
@@ -449,7 +431,8 @@ services:
       - OCR_TOPK=${OCR_TOPK:-3}
       - OCR_HTTP_TIMEOUT=${OCR_HTTP_TIMEOUT:-5}
       - PADDLEX_FACES_URL=${PADDLEX_FACES_URL:-http://paddlex-faces:8083}
-      - PADDLEX_FACES_PREDICT_PATH=${PADDLEX_FACES_PREDICT_PATH:-/face-detection}
+      # Faces usa YAML custom con pipeline object_detection → endpoint /object-detection
+      - PADDLEX_FACES_PREDICT_PATH=${PADDLEX_FACES_PREDICT_PATH:-/object-detection}
       - ENABLE_FACE_DETECTION=${ENABLE_FACE_DETECTION:-false}
       - PADDLEX_PEDESTRIANS_URL=${PADDLEX_PEDESTRIANS_URL:-http://paddlex-pedestrians:8084}
       - PADDLEX_PEDESTRIANS_PREDICT_PATH=${PADDLEX_PEDESTRIANS_PREDICT_PATH:-/pedestrian-attribute-recognition}
