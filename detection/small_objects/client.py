@@ -26,7 +26,12 @@ _tracker = IoUTracker(0.3)
 
 def normalize_small_objects_result(data: dict[str, Any]) -> list[dict[str, Any]]:
     result = data.get("result", data)
-    boxes = result.get("boxes") if isinstance(result, dict) else []
+    # Serving 3.7: detectedObjects[{bbox,categoryName,score}].
+    boxes = (
+        (result.get("detectedObjects") or result.get("boxes"))
+        if isinstance(result, dict)
+        else []
+    )
     coords, meta = [], []
     for box in boxes if isinstance(boxes, list) else []:
         if not isinstance(box, dict):
@@ -38,7 +43,9 @@ def normalize_small_objects_result(data: dict[str, Any]) -> list[dict[str, Any]]
         coords.append(bbox)
         meta.append(
             {
-                "label": str(box.get("label") or "small_object"),
+                "label": str(
+                    box.get("categoryName") or box.get("label") or "small_object"
+                ),
                 "score": float(box.get("score") or 0.0),
                 "bbox": bbox,
             }

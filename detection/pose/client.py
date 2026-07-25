@@ -60,8 +60,10 @@ def normalize_pose_result(data: dict[str, Any]) -> list[dict[str, Any]]:
     result = data.get("result", data)
     boxes: list[dict[str, Any]] = []
     if isinstance(result, dict):
+        # Serving 3.7: persons[{bbox,kpts,detScore,kptScore}].
         raw = (
-            result.get("boxes")
+            result.get("persons")
+            or result.get("boxes")
             or result.get("poses")
             or result.get("keypoints")
             or []
@@ -77,13 +79,23 @@ def normalize_pose_result(data: dict[str, Any]) -> list[dict[str, Any]]:
         if not isinstance(box, dict):
             continue
         coord = box.get("coordinate") or box.get("bbox")
-        kps = box.get("keypoints") or box.get("kpts") or box.get("keypoint") or []
+        kps = (
+            box.get("keypoints")
+            or box.get("kpts")
+            or box.get("keypoint")
+            or []
+        )
         if not coord or len(coord) < 4:
             coord = _bbox_from_keypoints(kps if isinstance(kps, list) else [])
         if not coord or len(coord) < 4:
             continue
         bbox = [float(coord[0]), float(coord[1]), float(coord[2]), float(coord[3])]
-        score = float(box.get("score") or box.get("det_score") or 0.0)
+        score = float(
+            box.get("score")
+            or box.get("detScore")
+            or box.get("det_score")
+            or 0.0
+        )
         coords.append(bbox)
         meta.append(
             {

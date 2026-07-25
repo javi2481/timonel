@@ -33,15 +33,9 @@ Imagen Docker compartida de PaddleX y su entrypoint. Los servicios
 1. Bump del pin en `infra/Dockerfile.paddlex` (`paddlex[cv,serving,ocr]==X.Y.Z`).
 2. Rebuild: `docker compose build paddlex paddlex-ocr paddlex-objects`
    (o `docker compose build` para todo el perfil que uses).
-3. Smoke:
-   - **Notebook 8 GB:** solo `docker compose --profile default up` +
-     verificar `/docs` u `/openapi.json` de cada servicio levantado
-     (ver healthchecks en `docker-compose.yml`). El smoke extendido
-     (`scripts/smoke_extended.sh`) **no corre en esta máquina** — RAM
-     insuficiente para `extended`/`experimental`.
-   - **Desktop 32 GB:** además correr `scripts/smoke_extended.sh` con
-     `--profile extended` (y `experimental` si aplica) antes de aceptar
-     el bump.
+3. Smoke: `docker compose up` levanta las 13 capacidades. Verificar `/docs` u
+   `/openapi.json` de cada servicio (ver healthchecks en `docker-compose.yml`)
+   y correr `scripts/smoke_extended.sh` antes de aceptar el bump.
 4. Confirmar especialmente que el pipeline OCR (`ocr_v5_mobile.yaml`) sigue
    sirviendo sin error de PIR/versión — es el punto de fricción conocido.
 5. Recién ahí, commitear el bump del pin.
@@ -84,8 +78,8 @@ El entrypoint exige `nvidia-smi` usable cuando `VI_DEVICE=gpu`; si no hay GPU/ru
 
 ### Límites de RAM (compose)
 
-Ver README raíz (§ RAM del host). Anchors `x-limits-default` (8 GB / default) y
-`x-limits-extended` (32 GB / extended+experimental).
+Ver README raíz (§ RAM del host). Anchor único `x-limits-paddlex` (~2g por
+contenedor). Host de referencia PC-Javier: 32 GB, Ryzen 8500G, sin GPU NVIDIA.
 
 ### Modelos lite (CPU)
 

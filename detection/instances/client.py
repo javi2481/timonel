@@ -28,7 +28,13 @@ def normalize_instances_result(data: dict[str, Any]) -> list[dict[str, Any]]:
     result = data.get("result", data)
     boxes = []
     if isinstance(result, dict):
-        boxes = result.get("boxes") or result.get("instances") or []
+        # Serving 3.7: instances[{bbox,categoryName,score,mask}].
+        boxes = (
+            result.get("instances")
+            or result.get("detectedObjects")
+            or result.get("boxes")
+            or []
+        )
     coords, meta = [], []
     for box in boxes if isinstance(boxes, list) else []:
         if not isinstance(box, dict):
@@ -40,7 +46,9 @@ def normalize_instances_result(data: dict[str, Any]) -> list[dict[str, Any]]:
         coords.append(bbox)
         meta.append(
             {
-                "label": str(box.get("label") or "instance"),
+                "label": str(
+                    box.get("categoryName") or box.get("label") or "instance"
+                ),
                 "score": float(box.get("score") or 0.0),
                 "bbox": bbox,
             }

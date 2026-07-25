@@ -2,7 +2,7 @@
 
 - **Estado:** propuesta (spike, sin implementación en Sprint 2)
 - **Fecha:** 2026-07-21
-- **Contexto:** perfil `extended` levanta 10+ contenedores PaddleX; cada uno carga runtime + pesos. En host 8 GB solo cabe `default`; en 32 GB extended es viable pero costoso en RAM.
+- **Contexto:** el stack levanta 13 contenedores PaddleX (una capacidad c/u); cada uno carga runtime + pesos. En el host de referencia (PC-Javier, 32 GB) entran todos; la huella de runtime duplicado por proceso sigue siendo el costo a evaluar.
 
 ## Pregunta
 
@@ -36,31 +36,33 @@
    proyecto pedagógico. Candidato solo si el spike de la opción 2/4 no alcanza y el
    costo de RAM sigue siendo bloqueante en un host real de producción.
 
-### RAM medida (placeholder — pendiente de spike)
+### RAM medida (PC-Javier, 2026-07-25)
 
-*(Sin medición real todavía. Este ADR es una propuesta/spike sin implementación en
-Sprint 2 — ver Estado. Completar esta tabla cuando se corra el spike con
-`scripts/benchmark_paddlex.py` + `docker stats` en el host real.)*
+Medición real con las **13 capacidades arriba a la vez** (`docker stats`, idle y
+bajo carga e2e). Método: `scripts/benchmark_paddlex.py` (latencia por servicio) +
+muestreo de `docker stats` durante fotos e2e.
 
-| Escenario | RSS por proceso (medido) | RSS total perfil | Notas |
+| Escenario | RSS por proceso (medido) | RSS total | Notas |
 |---|---|---|---|
-| `default` (paddlex + objects + ocr) | TBD | TBD | Notebook 8 GB — único perfil viable hoy |
-| `extended` (+ faces/pedestrians/scene/pose/face_id/signs) | TBD | TBD | Desktop 32 GB |
-| `experimental` (+ scene_cls/instances/small/anomaly/open_vocab) | TBD | TBD | Desktop 32 GB, opt-in |
+| 13 caps idle | 0.3–1.6 GiB (open_vocab el mayor) | ~9.4 GiB | Todas healthy |
+| 13 caps bajo carga e2e | pico open_vocab 1.49 GiB, small_objects 1.15 GiB | **~9.1 GiB pico** | Suma de picos |
 | Opción 4 (FastAPI multi-pipeline, N modelos en 1 proceso) | TBD | TBD | Requiere spike de serving separado |
 | Opción 5 (Triton) | TBD | TBD | Requiere exportación de modelos, spike separado |
 
-### Nota RAM — notebook 8 GB (restricción vigente)
+**Hallazgo clave — WSL2 cap de RAM.** Aunque el host tiene 32 GB, el daemon Docker
+(WSL2) solo ve **~15.18 GiB** (`docker info` → `MemTotal`). Las 13 caps entran
+holgadas (pico ~9.1 GiB, 60% del budget WSL2), así que RAM **no** es el límite; el
+cuello es CPU (~10–15 s de wall e2e por foto en el Ryzen 8500G). Para usar más de
+los 32 GB físicos hay que subir el límite en `~/.wslconfig` (`[wsl2] memory=24GB`)
+y reiniciar WSL — no es necesario hoy dado el margen.
 
-El perfil `default` (`x-limits-default`: `mem_limit: 1200m` × 3 servicios paddlex)
-debe convivir en la máquina de 8 GB con `adapter` y `bridge` (sin `mem_limit`
-explícito hoy, pero corriendo en el mismo host) — y, a partir del addendum SPA
-(Fase 1), también con el contenedor/servido de la SPA en `/app/`. Cualquier ajuste
-de `mem_limit` en `x-limits-default` o adición de nuevos servicios al perfil
-`default` debe seguir cabiendo en ese presupuesto de 8 GB junto con SO + Docker
-Desktop/WSL2 + navegador. El perfil `extended` (`x-limits-extended`, 32 GB) **no
-corre en la máquina de desarrollo diaria** — su smoke (`scripts/smoke_extended.sh`)
-está fuera del ciclo de verificación habitual en 8 GB (ver `infra/README.md`).
+### Nota RAM — host de referencia 32 GB
+
+Las 13 capacidades corren juntas bajo el techo único `x-limits-paddlex`
+(`mem_limit: 2000m` por contenedor) en PC-Javier (32 GB). Conviven con `adapter`,
+`bridge` y la SPA en `/app/` sin presión de RAM; el cuello observado es CPU
+(Ryzen 8500G, 6c/12t repartidos entre 13 procesos), no memoria. El smoke completo
+(`scripts/smoke_extended.sh`) sí corre en este host (ver `infra/README.md`).
 
 ## Decisión (Sprint 2)
 
@@ -74,4 +76,20 @@ está fuera del ciclo de verificación habitual en 8 GB (ver `infra/README.md`).
 ## Consecuencias
 
 - Sigue el mapa carpeta ↔ capacidad ↔ servicio del README.
-- La reducción de huella inmediata es operativa (`mem_limit`, no levantar extended en 8 GB), no arquitectónica.
+- La reducción de huella inmediata es operativa (`mem_limit` por contenedor, apagar capacidades vía `ENABLE_*`), no arquitectónica.
+
+## Enmienda (2026-07-25) — signs + open_vocab sobre `:8093`
+
+**Desviación consciente del invariante 1 carpeta = 1 capacidad = 1 servicio:**
+dos clients (`detection/signs`, `detection/open_vocab`) pegan al mismo proceso
+`paddlex-open-vocab` `:8093` (YOLO-Worldv2-L) con prompts distintos. Consolida
+y apaga `paddlex-signs` `:8088` (Compose `profiles: ["legacy-signs"]`).
+
+| Tema | Decisión |
+|------|----------|
+| Ownership de "señal" | Exclusiva de `signs` (`entity_type:"sign"` / `s-*`). `OPEN_VOCAB_PROMPT` **sin** `"traffic sign"`. |
+| Label | Colapsado a `"sign"`; `categoryName`+score como `hint`. |
+| Perillas | `SIGNS_OV_PROMPT` + `SIGNS_OV_THRESHOLD` (no heredar `SIGNS_THRESHOLD`). |
+| SPOF | Si `:8093` cae, **signs + open_vocab** fallan en el POST. `available` sigue saliendo de `ENABLE_*` sin probe HTTP (preexistente) — ahora arrastra dos caps. Trade-off aceptado frente a liberar ~2 GiB del servicio COCO. |
+| Rollback | `docker compose --profile legacy-signs up -d paddlex-signs` + `SIGNS_BACKEND=coco` + `PADDLEX_SIGNS_URL=http://paddlex-signs:8088`. |
+| Gate eval | El número `signs` en `scripts/eval_baseline.json` es **baseline COCO legacy decorativo**, no el path de producto OV. |

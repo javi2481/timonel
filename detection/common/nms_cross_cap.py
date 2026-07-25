@@ -78,10 +78,23 @@ def _row_to_data_fields(det: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _obj_array_1(value: Any) -> np.ndarray:
+    """Array object de largo 1 que envuelve ``value`` sin aplanarlo.
+
+    ``np.array([value], dtype=object)`` colapsa a un array N-D cuando ``value``
+    es una lista rectangular (p.ej. keypoints Nx3 de pose), rompiendo luego
+    ``sv.Detections.merge`` (dims distintas vs las otras caps). ``np.empty`` +
+    asignación garantiza shape ``(1,)`` con el objeto intacto.
+    """
+    arr = np.empty(1, dtype=object)
+    arr[0] = value
+    return arr
+
+
 def vi_det_to_detections(det: dict[str, Any]) -> sv.Detections:
     """Una detección VI con bbox → ``sv.Detections`` (len=1) para merge/NMS-B."""
     fields = _row_to_data_fields(det)
-    data = {k: np.array([fields[k]], dtype=object) for k in _DATA_KEYS}
+    data = {k: _obj_array_1(fields[k]) for k in _DATA_KEYS}
     return sv.Detections(
         xyxy=np.array([det["bbox"]], dtype=np.float32),
         confidence=np.array([float(det.get("score") or 0.0)], dtype=np.float32),

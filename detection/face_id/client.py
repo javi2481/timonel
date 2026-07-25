@@ -29,6 +29,9 @@ ENABLE_FACE_ID = os.getenv("ENABLE_FACE_ID", "false").strip().lower() in (
     "true",
     "yes",
 )
+# Clave de galería del serving (POST /face-recognition-index-build → indexKey).
+# Sin esto el infer hace assert indexer / 500. Ver detection/face_id/README.
+FACE_ID_INDEX_KEY = os.getenv("FACE_ID_INDEX_KEY", "").strip()
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30.0"))
 IOU_THRESHOLD = float(os.getenv("TRACK_IOU_THRESHOLD", "0.3"))
 
@@ -120,11 +123,18 @@ async def infer_face_id(
     """POST JPEG a face-recognition. None ante fallo."""
     if not ENABLE_FACE_ID:
         return None
+    if not FACE_ID_INDEX_KEY:
+        logger.debug(
+            "Face-id skip: FACE_ID_INDEX_KEY vacío (build galería primero)"
+        )
+        return None
     url = f"{PADDLEX_FACE_ID_URL.rstrip('/')}{PADDLEX_FACE_ID_PREDICT_PATH}"
     b64 = base64.b64encode(jpeg).decode("ascii")
     try:
         resp = await client.post(
-            url, json={"image": b64}, timeout=HTTP_TIMEOUT
+            url,
+            json={"image": b64, "indexKey": FACE_ID_INDEX_KEY},
+            timeout=HTTP_TIMEOUT,
         )
         resp.raise_for_status()
         data = resp.json()
