@@ -21,10 +21,13 @@ idle ←→ poll /media/current
 Con `ENABLE_EVIDENCE_CASCADE=true` (default en compose) las dependencias
 seguras (`pedestrians`, `face_id`, `open_vocab`) solo se invocan si hay
 evidencia. `faces` / `pose` / `signs` / scene / experimental siguen en
-oleada 1 mientras se mide recall. `false` = gather único (rollback).
+oleada 1 (medición: no condicionar faces/signs). `false` = gather único.
 
-Esto reduce **invocaciones/CPU**, no RAM ni cantidad de procesos PaddleX
-(lifecycle Docker = fase posterior).
+Esto reduce **invocaciones/CPU**. Con `ENABLE_CONTAINER_LIFECYCLE=true`
+(opt-in) el bridge también hace `docker pause` de `pedestrians` /
+`face_id` tras idle y `unpause` al disparar oleada 2. No libera RAM
+(`pause` congela CPU). `open_vocab` no se pausa: comparte contenedor con
+`signs` (oleada 1). Requiere montar el Docker sock en el servicio bridge.
 
 `DEMO_MODE=1` emite detecciones sintéticas sin PaddleX.
 
@@ -39,15 +42,16 @@ Esto reduce **invocaciones/CPU**, no RAM ni cantidad de procesos PaddleX
 |------|--------|
 | Compose | `bridge` (y `bridge-demo`) |
 | Depende de | `adapter`, `paddlex*`, paquetes `detection/` |
-| Env | `ADAPTER_*`, `PADDLEX_*`, `ENABLE_*`, `ENABLE_EVIDENCE_CASCADE`, `CASCADE_OBJECT_LOW_SCORE`, `MEDIA_*` |
+| Env | `ADAPTER_*`, `PADDLEX_*`, `ENABLE_*`, `ENABLE_EVIDENCE_CASCADE`, `CASCADE_OBJECT_LOW_SCORE`, `ENABLE_CONTAINER_LIFECYCLE`, `CONTAINER_IDLE_PAUSE_S`, `MEDIA_*` |
 
 ## Archivos clave
 
 - `main.py` — `run_loop`, `run_detections` (flujo completo).
 - `cascade.py` — política pura de evidencia (testeable sin HTTP).
+- `lifecycle.py` — pause/unpause Docker de ped/face_id (opt-in).
 - `media.py` — resolución de ruta / idle.
 
 ## Qué no es
 
 No abre RTSP ni video. No consolida tracks (eso es `adapter/`). No sirve UI.
-No hace `docker pause`/`stop` de pipelines (fuera de alcance de esta fase).
+No hace `docker stop`/scale-0 (solo `pause` opt-in; cold start queda fuera).

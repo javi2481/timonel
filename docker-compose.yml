@@ -482,6 +482,12 @@ services:
       # faces/pose/signs siguen en oleada 1 (sin trigger) hasta medir recall.
       - ENABLE_EVIDENCE_CASCADE=${ENABLE_EVIDENCE_CASCADE:-true}
       - CASCADE_OBJECT_LOW_SCORE=${CASCADE_OBJECT_LOW_SCORE:-0.35}
+      # Fase 2 lifecycle: pause ped/face_id en idle; unpause en oleada 2.
+      # Opt-in (docker.sock). open_vocab no se pausa (compartido con signs).
+      - ENABLE_CONTAINER_LIFECYCLE=${ENABLE_CONTAINER_LIFECYCLE:-false}
+      - CONTAINER_IDLE_PAUSE_S=${CONTAINER_IDLE_PAUSE_S:-120}
+      - DOCKER_SOCK=${DOCKER_SOCK:-/var/run/docker.sock}
+      - LIFECYCLE_PAUSE_CAPS=${LIFECYCLE_PAUSE_CAPS:-}
       # Sin "traffic sign": ownership exclusiva de la capacidad signs.
       - OPEN_VOCAB_PROMPT=${OPEN_VOCAB_PROMPT:-person,car}
       - OPEN_VOCAB_THRESHOLD=${OPEN_VOCAB_THRESHOLD:-0.05}
@@ -489,6 +495,8 @@ services:
       - ./detection:/app/detection:ro
       - ./bridge:/app/bridge:ro
       - ./imagenes_muestra:/media/images:ro
+      # Solo usado si ENABLE_CONTAINER_LIFECYCLE=true (pause/unpause).
+      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
     networks:
       - epp-network
     logging: *default-logging

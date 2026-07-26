@@ -12,6 +12,9 @@ Flujo por foto:
   6. overlay EN local → POST /preview/frame
   7. JSON → POST /ingest
 
+Con ENABLE_CONTAINER_LIFECYCLE: pause idle de ped/face_id;
+unpause al necesitarlos (oleada 2 o gather legacy).
+
 Sin foto: idle. DEMO_MODE: detecciones sintéticas sin PaddleX.
 No abre RTSP ni video.
 """
@@ -34,6 +37,10 @@ from bridge.cascade import (
     decide_dependent_caps,
     dependent_names_from_decision,
     wave1_capability_names,
+)
+from bridge.lifecycle import (
+    ContainerLifecycle,
+    build_lifecycle_from_env,
 )
 from bridge.media import (
     MEDIA_DIR,
@@ -224,7 +231,10 @@ async def push_preview_frame(client: httpx.AsyncClient, jpeg: bytes) -> None:
 
 
 async def run_detections(
-    client: httpx.AsyncClient, frame_hires
+    client: httpx.AsyncClient,
+    frame_hires,
+    *,
+    lifecycle: Optional[ContainerLifecycle] = None,
 ) -> tuple[Optional[list[dict[str, Any]]], bool, Optional[bytes]]:
     """Orquesta el registro de capacidades + plates + preview.
 
@@ -239,6 +249,8 @@ async def run_detections(
 
     Con ENABLE_EVIDENCE_CASCADE: oleada 1 (core + independientes) → evidencia
     → oleada 2 (pedestrians / face_id / open_vocab). Sin flag: gather único.
+
+    Con ENABLE_CONTAINER_LIFECYCLE: unpause ped/face_id antes de invocarlos.
     """
     frame_infer, scale_x, scale_y = maybe_resize_for_infer(frame_hires)
     jpeg = encode_jpeg(frame_infer)
@@ -262,6 +274,10 @@ async def run_detections(
     )
     caps_wave1 = [c for c in caps if c.name in wave1_names]
     caps_gather_w1 = [c for c in caps_wave1 if c.name not in tiled_names]
+
+    # Wake pausables that land in wave1 (cascade off, or future pausables).
+    if lifecycle is not None and lifecycle.enabled:
+        await lifecycle.ensure_awake(wave1_names)
 
     by_name = await gather_capabilities(
         client, caps_gather_w1, jpeg, frame_wh
@@ -307,6 +323,10 @@ async def run_detections(
             sorted(dep_names),
             ",".join(decision.reasons),
         )
+        if lifecycle is not None and lifecycle.enabled and dep_names:
+            woken = await lifecycle.ensure_awake(dep_names)
+            if woken:
+                logger.info("lifecycle wake wave2=%s", sorted(woken))
         wave2 = await gather_capabilities(client, caps_wave2, jpeg, frame_wh)
         by_name.update(wave2)
     else:
@@ -366,6 +386,8 @@ async def run_image_source(
     path: str,
     selected_name: Optional[str],
     generation: Any = None,
+    *,
+    lifecycle: Optional[ContainerLifecycle] = None,
 ) -> None:
     """Single-shot sobre una foto: infer + heartbeat preview hasta clear/cambio."""
     reset_all_trackers()
@@ -374,7 +396,9 @@ async def run_image_source(
     if frame_hires is None:
         raise RuntimeError(f"Cannot read image source: {path}")
 
-    detections, _degraded, preview_jpeg = await run_detections(client, frame_hires)
+    detections, _degraded, preview_jpeg = await run_detections(
+        client, frame_hires, lifecycle=lifecycle
+    )
     detections = detections or []
     # Always ingest (including []) so last_ingest_generation advances.
     await post_json(
@@ -421,46 +445,81 @@ async def run_image_source(
 
 async def run_loop() -> None:
     """Loop principal: idle / demo / foto activa."""
+    lifecycle = build_lifecycle_from_env()
     logger.info(
-        "Bridge start (photo-only) media_dir=%s %s adapter=%s demo=%s",
+        "Bridge start (photo-only) media_dir=%s %s adapter=%s demo=%s "
+        "lifecycle=%s idle_pause_s=%s pausable=%s",
         MEDIA_DIR,
         capability_status_line(),
         ADAPTER_INGEST_URL,
         DEMO_MODE,
+        lifecycle.enabled,
+        lifecycle.config.idle_pause_s if lifecycle.enabled else "-",
+        sorted(lifecycle.config.cap_containers) if lifecycle.enabled else [],
     )
+
+    idle_task: Optional[asyncio.Task] = None
+    if lifecycle.enabled:
+        started = await lifecycle.pause_all_pausable()
+        if started:
+            logger.info("lifecycle pause on start: %s", sorted(started))
+
+        async def _idle_sweeper() -> None:
+            # Poll often enough vs idle_pause_s without busy-looping.
+            interval = min(30.0, max(5.0, lifecycle.config.idle_pause_s / 4.0))
+            while True:
+                await asyncio.sleep(interval)
+                try:
+                    paused = await lifecycle.pause_idle()
+                    if paused:
+                        logger.info("lifecycle pause idle: %s", sorted(paused))
+                except Exception as exc:
+                    logger.warning("lifecycle idle sweep failed: %s", exc)
+
+        idle_task = asyncio.create_task(_idle_sweeper(), name="lifecycle-idle")
 
     selected: Optional[dict[str, Any]] = None
 
-    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
-        while True:
-            try:
-                if DEMO_MODE:
-                    detections = demo_detections()
-                    await post_json(
-                        client, ADAPTER_INGEST_URL, {"detections": detections}
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            while True:
+                try:
+                    if DEMO_MODE:
+                        detections = demo_detections()
+                        await post_json(
+                            client, ADAPTER_INGEST_URL, {"detections": detections}
+                        )
+                        await asyncio.sleep(FRAME_INTERVAL)
+                        continue
+
+                    polled = await fetch_current_media(client)
+                    selected = polled if polled is not None else None
+
+                    source = resolve_active_source(selected)
+                    if source is None:
+                        await asyncio.sleep(MEDIA_POLL_INTERVAL)
+                        continue
+
+                    await run_image_source(
+                        client,
+                        source,
+                        selected.get("name") if selected else None,
+                        selected.get("generation") if selected else None,
+                        lifecycle=lifecycle if lifecycle.enabled else None,
                     )
-                    await asyncio.sleep(FRAME_INTERVAL)
-                    continue
-
-                polled = await fetch_current_media(client)
-                selected = polled if polled is not None else None
-
-                source = resolve_active_source(selected)
-                if source is None:
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:
+                    logger.error("Bridge error on image source: %s", exc)
                     await asyncio.sleep(MEDIA_POLL_INTERVAL)
-                    continue
-
-                await run_image_source(
-                    client,
-                    source,
-                    selected.get("name") if selected else None,
-                    selected.get("generation") if selected else None,
-                )
+    finally:
+        if idle_task is not None:
+            idle_task.cancel()
+            try:
+                await idle_task
             except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                logger.error("Bridge error on image source: %s", exc)
-                await asyncio.sleep(MEDIA_POLL_INTERVAL)
+                pass
+        await lifecycle.aclose()
 
 
 def main() -> None:

@@ -97,6 +97,22 @@ queda como follow-up tras medir.
 
 Rollback: `ENABLE_EVIDENCE_CASCADE=false` (gather único legacy).
 
+## Enmienda (2026-07-25) — lifecycle pause/unpause (CPU idle, no RAM)
+
+**Opt-in** `ENABLE_CONTAINER_LIFECYCLE=true` + volume Docker sock en `bridge`.
+
+| Tema | Decisión |
+|------|---------|
+| Qué se pausa | Solo `vi-paddlex-pedestrians` y `vi-paddlex-face-id` (wave2 exclusivos) |
+| Qué no | Core (vehicles/objects/ocr), faces/pose/signs/scene/…, y **open_vocab** (SPOF con signs en `:8093`) |
+| Idle | `CONTAINER_IDLE_PAUSE_S` (default 120); pause al arrancar + sweep periódico |
+| Wake | `unpause` antes de oleada 2 (o gather legacy si la cap cae en wave1) |
+| RAM | `docker pause` **no** libera RAM; congela CPU del proceso |
+| Healthcheck | Contenedor pausado puede marcarse unhealthy; `restart: unless-stopped` no reinicia solo por unhealthy |
+| Rollback | `ENABLE_CONTAINER_LIFECYCLE=false` |
+
+Medición cascada (2026-07-25): no condicionar faces/signs a person/street.
+
 ## Enmienda (2026-07-25) — signs + open_vocab sobre `:8093`
 
 **Desviación consciente del invariante 1 carpeta = 1 capacidad = 1 servicio:**
