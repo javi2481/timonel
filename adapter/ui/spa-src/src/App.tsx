@@ -1,5 +1,5 @@
-// App — shell de la SPA Fase 1+2 (dual visible/active capabilities).
-import { useCallback, useEffect, useState } from "react";
+// App — shell de la SPA (dual visible/active capabilities + canvas UX).
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getCapabilities,
   putCapabilities,
@@ -8,6 +8,7 @@ import {
 import { AnalyticsRow } from "./components/AnalyticsRow";
 import { CapabilityPanel } from "./components/CapabilityPanel";
 import { EventsTable } from "./components/EventsTable";
+import { Legend } from "./components/Legend";
 import { PhotoCanvas } from "./components/PhotoCanvas";
 import { UploadBar } from "./components/UploadBar";
 import { useSession } from "./state/session";
@@ -32,7 +33,7 @@ export function App() {
     void refreshCatalog();
   }, [refreshCatalog]);
 
-  // F1: reset visibility on generation bump. Do NOT reset server active.
+  // Reset visibility on generation bump. Do NOT reset server active.
   useEffect(() => {
     setVisibility({});
     setHoveredId(null);
@@ -57,10 +58,18 @@ export function App() {
     [refreshCatalog],
   );
 
+  const activeCapCount = useMemo(
+    () => Object.values(catalog).filter((c) => c.active).length,
+    [catalog],
+  );
+
   return (
     <div className="vi-app">
       <header className="vi-header">
-        <h1>Vision Intelligence — SPA (Fase 1)</h1>
+        <div className="vi-brand">
+          <h1>Vision Intelligence</h1>
+          <div className="vi-brand-sub">panel de percepción · /app</div>
+        </div>
         <UploadBar
           status={state.status}
           errorMessage={state.errorMessage}
@@ -72,6 +81,7 @@ export function App() {
 
       <div className="vi-layout">
         <aside className="vi-sidebar">
+          <div className="vi-card-h">Capacidades</div>
           <CapabilityPanel
             events={state.events}
             visibility={visibility}
@@ -92,15 +102,22 @@ export function App() {
               <p>Subí una imagen para empezar el análisis.</p>
             </div>
           ) : (
-            <PhotoCanvas
-              generation={state.generation}
-              events={state.events}
-              visibility={visibility}
-              hoveredId={hoveredId}
-              selectedId={selectedId}
-              onHover={setHoveredId}
-              onSelect={setSelectedId}
-            />
+            <>
+              <PhotoCanvas
+                generation={state.generation}
+                events={state.events}
+                visibility={visibility}
+                hoveredId={hoveredId}
+                selectedId={selectedId}
+                onHover={setHoveredId}
+                onSelect={setSelectedId}
+                status={state.status}
+                errorMessage={state.errorMessage}
+                onRetry={retry}
+                activeCapCount={activeCapCount}
+              />
+              <Legend events={state.events} visibility={visibility} />
+            </>
           )}
         </main>
       </div>
