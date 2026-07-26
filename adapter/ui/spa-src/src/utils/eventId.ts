@@ -16,3 +16,26 @@ export function eventBbox(event: PerceptionEvent): number[] | null {
     ? payload.bbox
     : null;
 }
+
+export type BboxAnchor = "top-left" | "bottom-left";
+
+/**
+ * Posición en % del contenedor — misma base que SVG viewBox / naturalSize.
+ * Nunca usar constantes de escena (p. ej. 1280×800 del mock).
+ */
+export function bboxToPercent(
+  bbox: number[],
+  naturalSize: { w: number; h: number },
+  anchor: BboxAnchor = "top-left",
+): { leftPct: number; topPct: number } {
+  const [x1, y1, x2, y2] = bbox;
+  const leftPx = Math.max(0, Math.min(x1, x2));
+  const topPx =
+    anchor === "top-left"
+      ? Math.max(0, Math.min(y1, y2))
+      : Math.min(naturalSize.h, Math.max(y1, y2));
+  return {
+    leftPct: (leftPx / naturalSize.w) * 100,
+    topPct: (topPx / naturalSize.h) * 100,
+  };
+}
