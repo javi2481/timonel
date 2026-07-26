@@ -477,6 +477,11 @@ services:
       - PADDLEX_ANOMALY_URL=${PADDLEX_ANOMALY_URL:-http://paddlex-anomaly:8092}
       - ENABLE_OPEN_VOCAB=${ENABLE_OPEN_VOCAB:-false}
       - PADDLEX_OPEN_VOCAB_URL=${PADDLEX_OPEN_VOCAB_URL:-http://paddlex-open-vocab:8093}
+      # Cascada por evidencia: reduce invocaciones (CPU), no RAM ni #procesos.
+      # pedestrians←person; face_id←face; open_vocab←objects vacío/fallo/low.
+      # faces/pose/signs siguen en oleada 1 (sin trigger) hasta medir recall.
+      - ENABLE_EVIDENCE_CASCADE=${ENABLE_EVIDENCE_CASCADE:-true}
+      - CASCADE_OBJECT_LOW_SCORE=${CASCADE_OBJECT_LOW_SCORE:-0.35}
       # Sin "traffic sign": ownership exclusiva de la capacidad signs.
       - OPEN_VOCAB_PROMPT=${OPEN_VOCAB_PROMPT:-person,car}
       - OPEN_VOCAB_THRESHOLD=${OPEN_VOCAB_THRESHOLD:-0.05}

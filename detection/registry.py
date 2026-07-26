@@ -1,7 +1,8 @@
 """Registro de capacidades del bridge (infer + merge + reset).
 
 Agregar una capacidad nueva: registrar aquí + carpeta detection/<cap>/.
-No hace falta tocar el unpack manual de asyncio.gather en bridge/main.py.
+Si es dependiente de evidencia (como pedestrians/face_id/open_vocab),
+añadirla a DEPENDENT_CAP_NAMES en bridge/cascade.py.
 """
 
 from __future__ import annotations

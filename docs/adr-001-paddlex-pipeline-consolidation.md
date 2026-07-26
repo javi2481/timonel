@@ -78,6 +78,25 @@ Las 13 capacidades corren juntas bajo el techo único `x-limits-paddlex`
 - Sigue el mapa carpeta ↔ capacidad ↔ servicio del README.
 - La reducción de huella inmediata es operativa (`mem_limit` por contenedor, apagar capacidades vía `ENABLE_*`), no arquitectónica.
 
+## Enmienda (2026-07-25) — cascada por evidencia (invocaciones, no procesos)
+
+**Ortogonal al merge de servicios:** con `ENABLE_EVIDENCE_CASCADE` el bridge
+ejecuta dos oleadas (core + independientes → dependientes por evidencia).
+Reduce llamadas HTTP/CPU cuando no hay persona/rostro/objects inciertos;
+**no** reduce RAM idle ni cantidad de contenedores. `docker pause`/`stop`
+queda como follow-up tras medir.
+
+| Capacidad | Oleada | Trigger MVP |
+|-----------|--------|-------------|
+| vehicles, objects | 1 | siempre / SPA-active |
+| faces, pose, signs, scene, text, scene_cls, instances, small_objects, anomaly | 1 | SPA + ENABLE (sin trigger de evidencia aún) |
+| pedestrians | 2 | `objects` con `label=person` |
+| face_id | 2 | `faces` con ≥1 hit |
+| open_vocab | 2 | objects failed/empty/`max(score)<CASCADE_OBJECT_LOW_SCORE` |
+| plates | enrich | sin cambio (`OCR_MIN_SCORE` sobre vehicles) |
+
+Rollback: `ENABLE_EVIDENCE_CASCADE=false` (gather único legacy).
+
 ## Enmienda (2026-07-25) — signs + open_vocab sobre `:8093`
 
 **Desviación consciente del invariante 1 carpeta = 1 capacidad = 1 servicio:**

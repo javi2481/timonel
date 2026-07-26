@@ -23,6 +23,7 @@ jobs:
         run: |
           PYTHONPATH=. python3 tests/test_epp_core.py
           PYTHONPATH=. python3 tests/test_bridge_helpers.py
+          PYTHONPATH=. python3 tests/test_bridge_cascade.py
           PYTHONPATH=. python3 tests/test_adapter_media.py
           PYTHONPATH=. python3 tests/test_capabilities.py
           PYTHONPATH=. python3 tests/test_tiled_infer.py

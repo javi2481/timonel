@@ -13,6 +13,7 @@ Desde la raíz del repo, con deps instaladas (`opencv`, `numpy`, `pydantic`,
 
 ```bash
 PYTHONPATH=. python3 tests/test_bridge_helpers.py
+PYTHONPATH=. python3 tests/test_bridge_cascade.py
 PYTHONPATH=. python3 tests/test_epp_core.py
 PYTHONPATH=. python3 tests/test_adapter_media.py
 ```
@@ -45,6 +46,7 @@ Ninguno. Requiere packages de `bridge/requirements.txt` + `adapter/requirements.
 | Test | Cubre |
 |------|--------|
 | `test_bridge_helpers.py` | geometry, preview, vehicles, objects, media |
+| `test_bridge_cascade.py` | cascada por evidencia (política + gather) |
 | `test_epp_core.py` | consolidación / entity_type |
 | `test_adapter_media.py` | auto-select mtime |
 | `test_eval_match.py` | IoU matcher, OCR normalize, thresholds/baseline, pack registry |

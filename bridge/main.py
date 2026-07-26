@@ -4,7 +4,9 @@ Orquestador foto-only: imagen local → detection/* → Adapter.
 Flujo por foto:
   1. Poll GET /media/current (idle si no hay foto)
   2. cv2.imread
-  3. Capacidades del registro en paralelo (detection.registry)
+  3. Capacidades del registro (detection.registry); con
+     ENABLE_EVIDENCE_CASCADE: oleada 1 → evidencia → oleada 2
+     (pedestrians / face_id / open_vocab)
   4. merge COCO + attrs→person + extend/append según Cap.merge
   5. OCR de patente opcional sobre top-K vehicles
   6. overlay EN local → POST /preview/frame
@@ -27,6 +29,12 @@ from typing import Any, Optional
 import cv2
 import httpx
 
+from bridge.cascade import (
+    CascadeConfig,
+    decide_dependent_caps,
+    dependent_names_from_decision,
+    wave1_capability_names,
+)
 from bridge.media import (
     MEDIA_DIR,
     resolve_active_source,
@@ -44,6 +52,7 @@ from detection.objects import infer_objects_tiled_sync
 from detection.plates import enrich_vehicles_with_plates
 from detection.registry import (
     CAPABILITIES,
+    Capability,
     attach_object_track_ids,
     capability_status_line,
     merge_coco_detections,
@@ -173,6 +182,33 @@ def filter_capabilities_for_gather(active_names: set[str]) -> list:
     ]
 
 
+async def infer_capability(
+    client: httpx.AsyncClient,
+    cap: Capability,
+    jpeg: bytes,
+    frame_wh: tuple[int, int],
+) -> Any:
+    """Invoca una capacidad; el caller aísla fallos vía retorno None del client."""
+    if cap.needs_frame_wh:
+        return await cap.infer(client, jpeg, frame_wh=frame_wh)
+    return await cap.infer(client, jpeg)
+
+
+async def gather_capabilities(
+    client: httpx.AsyncClient,
+    caps: list[Capability],
+    jpeg: bytes,
+    frame_wh: tuple[int, int],
+) -> dict[str, Any]:
+    """asyncio.gather sobre caps; resultados keyed por name (orden de merge aparte)."""
+    if not caps:
+        return {}
+    gathered = await asyncio.gather(
+        *[infer_capability(client, cap, jpeg, frame_wh) for cap in caps]
+    )
+    return {cap.name: result for cap, result in zip(caps, gathered)}
+
+
 async def push_preview_frame(client: httpx.AsyncClient, jpeg: bytes) -> None:
     """POST JPEG anotado a /preview/frame. Falla en silencio."""
     try:
@@ -200,6 +236,9 @@ async def run_detections(
     Invariante coords: cada capacidad entrega cajas en hires antes de merge.
     Con ENABLE_INFER_TILING, vehicles/objects usan slicer sobre hires (sin
     scale_detections). Caps no tileadas escalan en su rama con scale_*.
+
+    Con ENABLE_EVIDENCE_CASCADE: oleada 1 (core + independientes) → evidencia
+    → oleada 2 (pedestrians / face_id / open_vocab). Sin flag: gather único.
     """
     frame_infer, scale_x, scale_y = maybe_resize_for_infer(frame_hires)
     jpeg = encode_jpeg(frame_infer)
@@ -211,19 +250,22 @@ async def run_detections(
 
     active_names = await fetch_active_capability_names(client)
     caps = filter_capabilities_for_gather(active_names)
+    cascade_cfg = CascadeConfig.from_env()
     tiling = ENABLE_INFER_TILING
     # Tiled caps run via to_thread on hires; exclude from JPEG gather.
     tiled_names = {"vehicles", "objects"} if tiling else set()
-    caps_gather = [c for c in caps if c.name not in tiled_names]
     want_objects = any(c.name == "objects" for c in caps)
 
-    async def _call(cap):
-        if cap.needs_frame_wh:
-            return await cap.infer(client, jpeg, frame_wh=frame_wh)
-        return await cap.infer(client, jpeg)
+    eligible_names = {c.name for c in caps}
+    wave1_names = wave1_capability_names(
+        eligible_names, cascade_enabled=cascade_cfg.enabled
+    )
+    caps_wave1 = [c for c in caps if c.name in wave1_names]
+    caps_gather_w1 = [c for c in caps_wave1 if c.name not in tiled_names]
 
-    gathered = await asyncio.gather(*[_call(cap) for cap in caps_gather])
-    by_name = {cap.name: result for cap, result in zip(caps_gather, gathered)}
+    by_name = await gather_capabilities(
+        client, caps_gather_w1, jpeg, frame_wh
+    )
 
     if tiling:
         vehicle_detections = await asyncio.to_thread(
@@ -246,6 +288,32 @@ async def run_detections(
         object_raw = by_name.get("objects")
         if object_raw:
             scale_detections(object_raw, scale_x, scale_y)
+
+    if cascade_cfg.enabled:
+        decision = decide_dependent_caps(
+            config=cascade_cfg,
+            objects_active=want_objects,
+            object_raw=object_raw,
+            faces_raw=by_name.get("faces"),
+            open_vocab_in_gather="open_vocab" in eligible_names,
+            pedestrians_in_gather="pedestrians" in eligible_names,
+            face_id_in_gather="face_id" in eligible_names,
+        )
+        dep_names = dependent_names_from_decision(decision)
+        # Registry order for deterministic wave2.
+        caps_wave2 = [c for c in caps if c.name in dep_names]
+        logger.info(
+            "cascade wave2=%s reasons=%s",
+            sorted(dep_names),
+            ",".join(decision.reasons),
+        )
+        wave2 = await gather_capabilities(client, caps_wave2, jpeg, frame_wh)
+        by_name.update(wave2)
+    else:
+        logger.debug("cascade disabled; single gather")
+
+    # Merge loop: all non-tiled eligible caps (incl. wave2 dependents).
+    caps_gather = [c for c in caps if c.name not in tiled_names]
 
     if object_raw:
         object_detections = attach_object_track_ids(object_raw)
