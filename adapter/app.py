@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import contextvars
+import hashlib
 import logging
 import os
 import re
@@ -897,6 +898,33 @@ def _safe_upload_basename(original: str) -> Optional[str]:
     return f"{stamp}_{stem_safe}{ext_l}"
 
 
+def _find_existing_by_content(folder: str, data: bytes) -> Optional[str]:
+    """Si ya hay una imagen con el mismo contenido (SHA-256), devolver su basename.
+
+    Evita duplicar fotos de ``imagenes_muestra`` cuando el usuario las
+    re-sube desde el file picker (el upload siempre nombraba ``timestamp_…``).
+    """
+    if not data or not os.path.isdir(folder):
+        return None
+    want = hashlib.sha256(data).hexdigest()
+    size = len(data)
+    for entry in os.listdir(folder):
+        full_path = os.path.join(folder, entry)
+        if not os.path.isfile(full_path):
+            continue
+        if os.path.splitext(entry)[1].lower() not in MEDIA_IMAGE_EXTENSIONS:
+            continue
+        try:
+            if os.path.getsize(full_path) != size:
+                continue
+            with open(full_path, "rb") as fh:
+                if hashlib.sha256(fh.read()).hexdigest() == want:
+                    return entry
+        except OSError:
+            continue
+    return None
+
+
 def _remember_media_mtime(name: str) -> None:
     """Actualiza el mapa del watcher tras un upload/select explícito."""
     path = os.path.join(MEDIA_DIR, MEDIA_IMAGE_SUBDIR, name)
@@ -962,6 +990,23 @@ async def media_upload(file: UploadFile = File(...)) -> JSONResponse:
                 },
                 status_code=400,
             )
+
+        existing = _find_existing_by_content(folder, data)
+        if existing is not None:
+            safe_name = existing
+            logger.info("Upload deduped -> existing %s", safe_name)
+        else:
+            dest = os.path.join(folder, safe_name)
+            with open(dest, "wb") as fh:
+                fh.write(data)
+    except OSError as exc:
+        logger.error("Upload write failed: %s", exc)
+        return JSONResponse(
+            {"status": 1, "msg": "no se pudo guardar", "ok": False, "error": str(exc)},
+            status_code=500,
+        )
+    finally:
+        await file.close()
 
     _remember_media_mtime(safe_name)
     result = _apply_media_selection(safe_name)

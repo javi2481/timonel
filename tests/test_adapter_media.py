@@ -99,6 +99,25 @@ class SafeUploadBasenameTests(unittest.TestCase):
         self.assertTrue(re.match(r"^\d{8}_\d{6}_", name))
 
 
+class FindExistingByContentTests(unittest.TestCase):
+    def test_finds_same_bytes_ignores_name(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            payload = b"\xff\xd8\xffsame-photo-bytes"
+            path = os.path.join(tmp, "nina.jpg")
+            with open(path, "wb") as fh:
+                fh.write(payload)
+            with open(os.path.join(tmp, "other.jpg"), "wb") as fh:
+                fh.write(b"\xff\xd8\xffdifferent")
+            hit = ad._find_existing_by_content(tmp, payload)
+            self.assertEqual(hit, "nina.jpg")
+
+    def test_none_when_no_match(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "a.jpg"), "wb") as fh:
+                fh.write(b"aaa")
+            self.assertIsNone(ad._find_existing_by_content(tmp, b"bbb"))
+
+
 class MediaOriginalEndpointTests(unittest.TestCase):
     """T1.4: GET /media/original — FileResponse + X-Generation + no-store; 404 sin media."""
 
