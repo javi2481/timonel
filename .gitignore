@@ -34,3 +34,4 @@ scripts/infer_slice_measure.json
 
 # Codegraph local index (machine-specific)
 .codegraph/
+.gstack/
