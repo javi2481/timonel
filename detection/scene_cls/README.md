@@ -6,7 +6,7 @@ Clasificación global de imagen (`image_classification` / multilabel): night, ra
 
 ## GATE (Fase 3)
 
-No activar sin: (1) regla AMIS concreta, (2) estimación RAM/latencia, (3) profile `experimental`.
+No activar sin: (1) regla de producto concreta, (2) estimación RAM/latencia, (3) profile `experimental`.
 
 ## Servicio
 

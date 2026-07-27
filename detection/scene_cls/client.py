@@ -1,6 +1,6 @@
 """Scaffold image_classification (profile experimental).
 
-GATE: regla AMIS escrita + estimación RAM/latencia antes de ENABLE_SCENE_CLS=true.
+GATE: regla de producto escrita + estimación RAM/latencia antes de ENABLE_SCENE_CLS=true.
 """
 
 from __future__ import annotations

@@ -13,6 +13,10 @@ vía PaddleX `object_detection`.
 4. `merge_coco_detections` descarta cajas COCO de clase vehículo ya cubiertas
    por `vehicles/` (ese pipeline trae color/plate). Labels como `person` se
    conservan siempre.
+5. `dedupe_same_label_ios` une duplicados de la misma label con cajas anidadas
+   (p. ej. dos `bed`) vía IoS; el NMS-B por IoU no alcanza cuando la chica está
+   dentro de una mucho más grande. Env: `OBJECT_SAME_LABEL_IOS_THRESHOLD`
+   (default `0.5`).
 
 ## Entrada / salida
 
@@ -32,7 +36,8 @@ vía PaddleX `object_detection`.
 
 ## Archivos clave
 
-- `client.py` — `infer_objects`, `merge_coco_detections`, `normalize_object_detection_result`.
+- `client.py` — `infer_objects`, `merge_coco_detections`,
+  `dedupe_same_label_ios`, `normalize_object_detection_result`.
 
 ## Qué no es
 

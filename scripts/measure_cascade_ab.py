@@ -220,7 +220,7 @@ async def main() -> int:
     async def _fixed_active(_client: httpx.AsyncClient) -> set[str]:
         return set(ACTIVE_CAPS)
 
-    bridge_main.fetch_active_capability_names = _fixed_active  # type: ignore[method-assign]
+    bridge_main.fetch_available_capability_names = _fixed_active  # type: ignore[method-assign]
 
     print(
         f"cascade A/B images={len(images)} max_per_prefix={MAX_PER_PREFIX} "

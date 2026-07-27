@@ -13,7 +13,7 @@ from detection.common.paddlex_client import (
     post_image_predict,
 )
 from detection.common.preview import draw_preview, preview_box_color, preview_label
-from detection.common.tracking import IoUTracker, iou
+from detection.common.tracking import IoUTracker, ios, iou
 
 __all__ = [
     "BRIDGE_MAX_WIDTH",
@@ -23,6 +23,7 @@ __all__ = [
     "draw_preview",
     "encode_jpeg",
     "env_flag",
+    "ios",
     "iou",
     "maybe_resize_for_infer",
     "post_image_predict",

@@ -15,7 +15,7 @@ from typing import Any, Optional
 
 import httpx
 
-from detection.common.tracking import IoUTracker, iou
+from detection.common.tracking import IoUTracker, ios, iou
 
 logger = logging.getLogger("detection.objects")
 
@@ -25,6 +25,8 @@ PADDLEX_OBJECTS_PREDICT_PATH = os.getenv(
 )
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30.0"))
 IOU_THRESHOLD = float(os.getenv("TRACK_IOU_THRESHOLD", "0.3"))
+# Misma label + caja chica casi dentro de otra: IoU puede ser <0.5; IoS las une.
+SAME_LABEL_IOS_THRESHOLD = float(os.getenv("OBJECT_SAME_LABEL_IOS_THRESHOLD", "0.5"))
 
 # Labels COCO ya cubiertos por vehicle_attribute_recognition (color/plate).
 VEHICLE_COCO_LABELS = {"car", "truck", "bus", "motorcycle", "bicycle"}
@@ -105,6 +107,46 @@ def merge_coco_detections(
             if any(iou(bbox, vb) > iou_threshold for vb in vehicle_boxes):
                 continue
         kept.append(det)
+    return kept
+
+
+def dedupe_same_label_ios(
+    object_dets: list[dict[str, Any]],
+    ios_threshold: float | None = None,
+) -> list[dict[str, Any]]:
+    """NMS greedy por misma label con IoS (cajas anidadas tipo bed⊂bed).
+
+    Conserva el de mayor ``score``. Labels distintas no se suprimen entre sí
+    (person dentro de couch, etc.). No reemplaza NMS-B cross-cap.
+    """
+    if not object_dets:
+        return []
+    thr = SAME_LABEL_IOS_THRESHOLD if ios_threshold is None else float(ios_threshold)
+    ranked = sorted(
+        object_dets,
+        key=lambda d: float(d.get("score") or 0.0),
+        reverse=True,
+    )
+    kept: list[dict[str, Any]] = []
+    for det in ranked:
+        label = str(det.get("label") or "").strip().lower()
+        bbox = det.get("bbox")
+        if not bbox or len(bbox) < 4:
+            kept.append(det)
+            continue
+        duplicate = False
+        for prev in kept:
+            prev_label = str(prev.get("label") or "").strip().lower()
+            if prev_label != label:
+                continue
+            prev_bbox = prev.get("bbox")
+            if not prev_bbox or len(prev_bbox) < 4:
+                continue
+            if ios(bbox, prev_bbox) >= thr:
+                duplicate = True
+                break
+        if not duplicate:
+            kept.append(det)
     return kept
 
 

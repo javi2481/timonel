@@ -23,6 +23,7 @@ from detection.faces import (
 from detection.instances import ENABLE_INSTANCE_SEG, infer_instances
 from detection.objects import (
     attach_object_track_ids,
+    dedupe_same_label_ios,
     infer_objects,
     merge_coco_detections,
     reset_object_tracker,
@@ -130,6 +131,7 @@ __all__ = [
     "Capability",
     "attach_object_track_ids",
     "capability_status_line",
+    "dedupe_same_label_ios",
     "merge_coco_detections",
     "merge_person_attributes",
     "reset_all_trackers",

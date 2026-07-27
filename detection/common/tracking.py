@@ -7,20 +7,37 @@ por track_id. Usado por vehicles (prefijo v-) y objects (prefijo o-).
 from __future__ import annotations
 
 
-def iou(a: list[float], b: list[float]) -> float:
-    """IoU entre dos bboxes [x1,y1,x2,y2]. 0.0 si no hay intersección."""
+def _inter_and_areas(
+    a: list[float], b: list[float]
+) -> tuple[float, float, float]:
+    """Intersección y áreas de dos bboxes [x1,y1,x2,y2]."""
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
     ix1, iy1 = max(ax1, bx1), max(ay1, by1)
     ix2, iy2 = min(ax2, bx2), min(ay2, by2)
     iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
     inter = iw * ih
-    if inter <= 0:
-        return 0.0
     area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
     area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    return inter, area_a, area_b
+
+
+def iou(a: list[float], b: list[float]) -> float:
+    """IoU entre dos bboxes [x1,y1,x2,y2]. 0.0 si no hay intersección."""
+    inter, area_a, area_b = _inter_and_areas(a, b)
+    if inter <= 0:
+        return 0.0
     union = area_a + area_b - inter
     return inter / union if union > 0 else 0.0
+
+
+def ios(a: list[float], b: list[float]) -> float:
+    """Intersection-over-smaller: atrapa cajas anidadas donde el IoU queda bajo."""
+    inter, area_a, area_b = _inter_and_areas(a, b)
+    if inter <= 0:
+        return 0.0
+    smaller = min(area_a, area_b)
+    return inter / smaller if smaller > 0 else 0.0
 
 
 class IoUTracker:
