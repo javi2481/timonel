@@ -385,7 +385,6 @@ services:
       - ENABLE_ANOMALY=${ENABLE_ANOMALY:-false}
       - ENABLE_OPEN_VOCAB=${ENABLE_OPEN_VOCAB:-false}
     volumes:
-      - ./adapter:/app/adapter
       - ./imagenes_muestra:/media/images
     networks:
       - epp-network

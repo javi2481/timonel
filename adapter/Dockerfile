@@ -44,4 +44,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=5 \
   CMD curl -fsS http://127.0.0.1:8000/health || exit 1
 
-CMD ["uvicorn", "adapter.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+CMD ["uvicorn", "adapter.app:app", "--host", "0.0.0.0", "--port", "8000"]

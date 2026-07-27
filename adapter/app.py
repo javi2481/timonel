@@ -2,14 +2,14 @@
 Adaptador FastAPI — media, ingest, consolidación y UI estática.
 
 Responsabilidad: normalizar detecciones (vehicles/objects/plates vía bridge)
-→ PerceptionEvent (epp_core). Sirve el panel AMIS desde adapter/ui/.
+→ PerceptionEvent (epp_core). Sirve la SPA (Vite) en /app/.
 
 NO decide reglas de negocio (JetLinks/rules) ni corre inferencia PaddleX.
 
 Flujo:
   POST /ingest  → acumula por track_id en track_cache (TTL)
   sweeper TTL   → consolidate_and_emit → events_buffer
-  GET  /events  → buffer para AMIS/ECharts
+  GET  /events  → buffer para la SPA / ECharts
   POST /webhook/rules → gancho listo para JetLinks
 """
 
@@ -29,7 +29,13 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import (
+    FileResponse,
+    JSONResponse,
+    RedirectResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -65,13 +71,12 @@ EVENTS_BUFFER_SIZE = int(os.getenv("EVENTS_BUFFER_SIZE", "500"))
 SWEEP_INTERVAL_SECONDS = float(os.getenv("SWEEP_INTERVAL_SECONDS", "1.0"))
 JETLINKS_WEBHOOK_URL = os.getenv("JETLINKS_WEBHOOK_URL", "")  # vacío = modo MVP local
 JETLINKS_API_KEY = os.getenv("JETLINKS_API_KEY", "demo")
-# UI estática vive en adapter/ui/ (dashboard, AMIS schema, placeholder).
+# UI: placeholder de preview + build de la SPA (adapter/ui/spa/).
 _DEFAULT_STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "ui")
 STATIC_DIR = os.getenv("STATIC_DIR", _DEFAULT_STATIC)
-# SPA Fase 1 (addendum-s2-spa-s3): build de Vite (adapter/ui/spa-src/ →
-# adapter/Dockerfile stage node → adapter/ui/spa/). Coexiste con AMIS en
-# `/` — ver adapter/ui/README.md. Sin Node en el host de runtime: la imagen
-# multi-stage ya trae `spa/` compilado; `SPA_DIR` es overrideable para tests.
+# SPA (única UI): Vite build (spa-src/ → Dockerfile stage node → spa/).
+# Se sirve en /app/. Sin Node en runtime: la imagen multi-stage ya trae
+# spa/ compilado; SPA_DIR es overrideable para tests.
 _DEFAULT_SPA = os.path.join(_DEFAULT_STATIC, "spa")
 SPA_DIR = os.getenv("SPA_DIR", _DEFAULT_SPA)
 RULES_SINK_URL = os.getenv("RULES_SINK_URL", "http://rules-sink:8850")
@@ -650,6 +655,7 @@ async def put_capabilities(request: Request) -> JSONResponse:
         )
     return JSONResponse(_spa_capability_catalog())
 
+
 @app.post("/ingest")
 async def ingest(request: Request) -> JSONResponse:
     """
@@ -741,7 +747,7 @@ async def ingest(request: Request) -> JSONResponse:
 
 @app.get("/events")
 async def get_events(limit: int = 100, plate: Optional[str] = None) -> dict[str, Any]:
-    """Buffer de PerceptionEvent para AMIS / ECharts.
+    """Buffer de PerceptionEvent para la SPA / ECharts.
 
     `plate` es un filtro de presentación (substring case-insensitive sobre
     `payload.plate_text`), aplicado ANTES de `limit`. Omitirlo preserva el
@@ -916,7 +922,10 @@ async def media_select(body: MediaSelectBody) -> JSONResponse:
 async def media_upload(file: UploadFile = File(...)) -> JSONResponse:
     """Recibe una imagen, la guarda en MEDIA_DIR/images y la auto-selecciona.
 
-    Respuesta compatible con AMIS `input-file` (status/msg/data) y con clients
+    Si el contenido ya existe en la carpeta (p. ej. re-subir una de
+    ``imagenes_muestra``), no escribe otra copia: solo la selecciona.
+
+    Respuesta compatible con la SPA (status/msg/data) y con clients
     simples (`ok`/`name`/`generation`).
     """
     safe_name = _safe_upload_basename(file.filename or "")
@@ -941,7 +950,6 @@ async def media_upload(file: UploadFile = File(...)) -> JSONResponse:
             status_code=500,
         )
 
-    dest = os.path.join(folder, safe_name)
     try:
         data = await file.read()
         if not data:
@@ -954,16 +962,6 @@ async def media_upload(file: UploadFile = File(...)) -> JSONResponse:
                 },
                 status_code=400,
             )
-        with open(dest, "wb") as fh:
-            fh.write(data)
-    except OSError as exc:
-        logger.error("Upload write failed %s: %s", dest, exc)
-        return JSONResponse(
-            {"status": 1, "msg": "no se pudo guardar", "ok": False, "error": str(exc)},
-            status_code=500,
-        )
-    finally:
-        await file.close()
 
     _remember_media_mtime(safe_name)
     result = _apply_media_selection(safe_name)
@@ -1068,21 +1066,18 @@ async def preview_jpg() -> Response:
 
 
 @app.get("/")
-async def dashboard() -> FileResponse:
-    """Sirve el shell HTML que carga AMIS + amis_dashboard.json."""
-    path = os.path.join(STATIC_DIR, "dashboard.html")
-    return FileResponse(path)
+async def root_redirect() -> RedirectResponse:
+    """La UI canónica es la SPA en /app/; `/` solo redirige."""
+    return RedirectResponse(url="/app/", status_code=307)
 
 
-# Assets estáticos (amis_dashboard.json, etc.)
-if os.path.isdir(STATIC_DIR):
-    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-# SPA Fase 1 (addendum-s2-spa-s3): `/app/` — panel alternativo a AMIS (`/`).
-# `html=True` sirve `index.html` para la raíz del mount; la SPA no tiene
-# rutas propias de cliente en F1 (una sola pantalla), así que no hace falta
-# un fallback adicional a index.html para sub-rutas.
-if os.path.isdir(SPA_DIR):
+# SPA — única UI del producto. `html=True` sirve index.html en /app/.
+# Sin rutas de cliente propias (una sola pantalla): no hace falta fallback
+# adicional a index.html para sub-rutas.
+if os.path.isdir(SPA_DIR) and os.path.isfile(os.path.join(SPA_DIR, "index.html")):
     app.mount("/app", StaticFiles(directory=SPA_DIR, html=True), name="spa")
 else:
-    logger.warning("SPA_DIR not found (%s) — /app/ disabled", SPA_DIR)
+    logger.warning(
+        "SPA_DIR missing or empty (%s) — /app/ disabled; rebuild the adapter image",
+        SPA_DIR,
+    )

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "SPA Fase 1 (addendum-s2-spa-s3) — monta en /app/, coexiste con AMIS en /.",
+  "description": "SPA — única UI del producto; monta en /app/.",
   "scripts": {
     "predev": "node scripts/copy-types.mjs",
     "dev": "vite",

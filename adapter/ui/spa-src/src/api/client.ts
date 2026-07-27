@@ -1,4 +1,4 @@
-// Cliente HTTP tipado para la SPA (Fase 1, addendum-s2-spa-s3).
+// Cliente HTTP tipado para la SPA.
 //
 // Mismo origen que la API (`adapter/app.py` sirve /app/ y los endpoints REST
 // desde el mismo proceso FastAPI) — rutas relativas a la raíz, no a `/app/`.

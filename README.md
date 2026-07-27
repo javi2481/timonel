@@ -1,7 +1,7 @@
 # Vision Intelligence — Producto B (Sprint 1)
 
 Orquestar, no inventar. Pipeline Docker-first **foto-only**:
-**Foto → detection/* → adapter/epp_core → AMIS**.
+**Foto → detection/* → adapter/epp_core → SPA (/app/)**.
 
 ## Mapa carpeta ↔ capacidad ↔ servicio
 
@@ -21,7 +21,7 @@ Orquestar, no inventar. Pipeline Docker-first **foto-only**:
 | [detection/common/](detection/common/) | Tracker, geometry, preview | — |
 | [bridge/](bridge/) | Orquestador foto → ingest/preview | `bridge` |
 | [adapter/](adapter/) | Media, consolidación, API | `adapter` `:8000` |
-| [adapter/ui/](adapter/ui/) | Panel AMIS | (estáticos del adapter) |
+| [adapter/ui/](adapter/ui/) | Panel SPA (`/app/`) | (build Vite del adapter) |
 | [rules/](rules/) | Alertas headless | `rules-sink` (profile `rules`) |
 | [infra/](infra/) | Imagen PaddleX compartida | build de `paddlex*` |
 | [tests/](tests/) | Unit tests | — |
@@ -45,7 +45,7 @@ Cada carpeta tiene su propio `README.md` (para qué / cómo / I-O / deps).
                                           |
                                    POST /ingest + /preview/frame
                                           v
-                              PerceptionEvent → AMIS (/events)
+                              PerceptionEvent → SPA (/events, /app/)
 ```
 
 ## Arranque rápido
@@ -65,7 +65,7 @@ subí su `mem_limit` en compose o bajá `BRIDGE_MAX_WIDTH`.
 
 | Recurso | URL |
 |---------|-----|
-| Dashboard | http://localhost:8000 |
+| Dashboard (SPA) | http://localhost:8000/app/ |
 | Events | http://localhost:8000/events |
 | Health | http://localhost:8000/health |
 | PaddleX vehicles | http://localhost:8080 |
