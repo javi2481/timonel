@@ -21,7 +21,7 @@ interface Props {
   status: SessionStatus;
   errorMessage: string | null;
   onRetry: () => void;
-  activeCapCount: number;
+  availableCapCount: number;
 }
 
 function contrastInk(hex: string): string {
@@ -32,6 +32,55 @@ function contrastInk(hex: string): string {
   const b = parseInt(h.slice(4, 6), 16);
   const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
   return lum > 0.55 ? "#0a0e13" : "#e7eef6";
+}
+
+/** Punto del cliente → coords del viewBox SVG (respeeta preserveAspectRatio). */
+function clientToSvgPoint(
+  svg: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+): { x: number; y: number } | null {
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return null;
+  const pt = svg.createSVGPoint();
+  pt.x = clientX;
+  pt.y = clientY;
+  const local = pt.matrixTransform(ctm.inverse());
+  return { x: local.x, y: local.y };
+}
+
+function pointInBbox(x: number, y: number, bbox: number[]): boolean {
+  const x1 = Math.min(bbox[0], bbox[2]);
+  const x2 = Math.max(bbox[0], bbox[2]);
+  const y1 = Math.min(bbox[1], bbox[3]);
+  const y2 = Math.max(bbox[1], bbox[3]);
+  return x >= x1 && x <= x2 && y >= y1 && y <= y2;
+}
+
+function bboxArea(bbox: number[]): number {
+  return Math.abs(bbox[2] - bbox[0]) * Math.abs(bbox[3] - bbox[1]);
+}
+
+/** Hits bajo el cursor, más chica primero (para preferir cara sobre cuerpo, etc.). */
+function hitsAtPoint<T extends { id: string; bbox: number[] | null }>(
+  entries: T[],
+  x: number,
+  y: number,
+): T[] {
+  return entries
+    .filter((e) => e.bbox !== null && pointInBbox(x, y, e.bbox as number[]))
+    .slice()
+    .sort((a, b) => bboxArea(a.bbox as number[]) - bboxArea(b.bbox as number[]));
+}
+
+/** Ciclo: más chica → siguientes → deseleccionar → otra vez. */
+function nextOverlapSelection(hitIds: string[], selectedId: string | null): string | null {
+  if (hitIds.length === 0) return null;
+  if (selectedId === null) return hitIds[0];
+  const idx = hitIds.indexOf(selectedId);
+  if (idx < 0) return hitIds[0];
+  if (idx === hitIds.length - 1) return null;
+  return hitIds[idx + 1];
 }
 
 export function PhotoCanvas({
@@ -45,14 +94,14 @@ export function PhotoCanvas({
   status,
   errorMessage,
   onRetry,
-  activeCapCount,
+  availableCapCount,
 }: Props) {
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const [showLabels, setShowLabels] = useState(true);
 
   const visibleEntries = events
     .map((event, index) => ({ event, index, id: eventId(event, index), bbox: eventBbox(event) }))
-    .filter((entry) => entry.bbox !== null && visibility[entry.event.entity_type] !== false);
+    .filter((entry) => entry.bbox !== null && visibility[entry.event.entity_type] === true);
 
   const selected = visibleEntries.find((entry) => entry.id === selectedId) ?? null;
 
@@ -86,6 +135,23 @@ export function PhotoCanvas({
               className="vi-canvas-overlay"
               viewBox={`0 0 ${naturalSize.w} ${naturalSize.h}`}
               preserveAspectRatio="xMidYMid meet"
+              style={{ cursor: "crosshair" }}
+              onMouseMove={(e) => {
+                const svg = e.currentTarget;
+                const pt = clientToSvgPoint(svg, e.clientX, e.clientY);
+                if (!pt) return;
+                const hits = hitsAtPoint(visibleEntries, pt.x, pt.y);
+                const nextHover = hits[0]?.id ?? null;
+                if (nextHover !== hoveredId) onHover(nextHover);
+              }}
+              onMouseLeave={() => onHover(null)}
+              onClick={(e) => {
+                const svg = e.currentTarget;
+                const pt = clientToSvgPoint(svg, e.clientX, e.clientY);
+                if (!pt) return;
+                const hits = hitsAtPoint(visibleEntries, pt.x, pt.y);
+                onSelect(nextOverlapSelection(hits.map((h) => h.id), selectedId));
+              }}
             >
               {visibleEntries.map(({ event, id, bbox }) => {
                 const [x1, y1, x2, y2] = bbox as number[];
@@ -107,10 +173,7 @@ export function PhotoCanvas({
                     fillOpacity={isSelected ? 0.15 : 0}
                     stroke={color}
                     strokeWidth={isHovered || isSelected ? 4 : 2}
-                    style={{ cursor: "pointer" }}
-                    onMouseEnter={() => onHover(id)}
-                    onMouseLeave={() => onHover(null)}
-                    onClick={() => onSelect(id === selectedId ? null : id)}
+                    pointerEvents="none"
                   />
                 );
               })}
@@ -155,10 +218,13 @@ export function PhotoCanvas({
             <div className="vi-overlay vi-overlay-proc">
               <div>
                 <div className="vi-spinner" />
-                <div className="vi-overlay-msg">Analizando…</div>
+                <div className="vi-overlay-msg">Analizando imagen…</div>
+                <div className="vi-progress-indeterminate" aria-hidden>
+                  <div className="vi-progress-indeterminate-bar" />
+                </div>
                 <div className="vi-overlay-sub">
-                  {activeCapCount} capacidad{activeCapCount === 1 ? "" : "es"} activa
-                  {activeCapCount === 1 ? "" : "s"}
+                  {availableCapCount} capacidad{availableCapCount === 1 ? "" : "es"} disponible
+                  {availableCapCount === 1 ? "" : "s"}
                 </div>
               </div>
             </div>
@@ -167,7 +233,7 @@ export function PhotoCanvas({
             <div className="vi-overlay">
               <div className="vi-empty-card">
                 <div className="vi-empty-big">Análisis completo — sin detecciones</div>
-                <div>Probá con otra foto o activá más capacidades.</div>
+                <div>Ningún pipeline encontró nada. Probá con otra foto.</div>
               </div>
             </div>
           )}
@@ -222,7 +288,12 @@ function EventPopover({
       if (e.key === "Escape") onClose();
     }
     function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        // El overlay maneja el clic (ciclo de cajas superpuestas); no resetear acá.
+        const t = e.target as Element | null;
+        if (t?.closest?.(".vi-canvas-overlay")) return;
+        onClose();
+      }
     }
     document.addEventListener("keydown", onKey);
     document.addEventListener("mousedown", onDoc);

@@ -19,7 +19,7 @@ export function EventsTable({ events, visibility, hoveredId, selectedId, onHover
 
   const rows = events
     .map((event, index) => ({ event, id: eventId(event, index) }))
-    .filter(({ event }) => visibility[event.entity_type] !== false);
+    .filter(({ event }) => visibility[event.entity_type] === true);
 
   return (
     <div className="vi-events-table">

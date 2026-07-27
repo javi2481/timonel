@@ -110,14 +110,14 @@ class CapabilitiesPutTests(unittest.TestCase):
                         gen0 = before["generation"]
                         self.assertTrue(before["capabilities"]["face"]["active"])
 
-                        # Deactivate faces
+                        # Deactivate faces — no re-run (generation estable)
                         r1 = client.put(
                             "/capabilities",
                             json={"active": {"face": False}},
                         )
                         self.assertEqual(r1.status_code, 200)
                         body1 = r1.json()
-                        self.assertEqual(body1["generation"], gen0 + 1)
+                        self.assertEqual(body1["generation"], gen0)
                         self.assertFalse(body1["capabilities"]["face"]["active"])
                         self.assertTrue(body1["capabilities"]["vehicle"]["active"])
 
@@ -142,7 +142,7 @@ class CapabilitiesPutTests(unittest.TestCase):
                         )
                         self.assertEqual(r_p.status_code, 400)
 
-                        # Re-activate faces; active survives second PUT of other key
+                        # Re-activate faces → bump (off→on)
                         r2 = client.put(
                             "/capabilities",
                             json={"active": {"face": True}},
@@ -150,13 +150,15 @@ class CapabilitiesPutTests(unittest.TestCase):
                         self.assertEqual(r2.status_code, 200)
                         self.assertTrue(r2.json()["capabilities"]["face"]["active"])
                         gen_face = r2.json()["generation"]
+                        self.assertEqual(gen_face, gen0 + 1)
 
+                        # object already active → no bump; face survives
                         r3 = client.put(
                             "/capabilities",
                             json={"active": {"object": True}},
                         )
                         self.assertEqual(r3.status_code, 200)
-                        self.assertEqual(r3.json()["generation"], gen_face + 1)
+                        self.assertEqual(r3.json()["generation"], gen_face)
                         self.assertTrue(r3.json()["capabilities"]["face"]["active"])
                         self.assertTrue(r3.json()["capabilities"]["vehicle"]["active"])
             finally:
@@ -171,7 +173,11 @@ class EmptyIngestTests(unittest.TestCase):
             ad.MEDIA_DIR = tmp
             try:
                 with TestClient(ad.app) as client:
-                    # Bump generation via PUT (no media required)
+                    # Bump generation: off→on (PUT idempotente no bumpa)
+                    client.put(
+                        "/capabilities",
+                        json={"active": {"object": False}},
+                    )
                     put = client.put(
                         "/capabilities",
                         json={"active": {"object": True}},

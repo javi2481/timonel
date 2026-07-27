@@ -572,7 +572,9 @@ async def get_capabilities() -> dict[str, Any]:
 async def put_capabilities(request: Request) -> JSONResponse:
     """Merge parcial de active; vehicle off / unknown / ¬available → 400.
 
-    Siempre flush + generation+=1 (con o sin media). No resetea active.
+    Solo flush + generation+=1 si se **activa** alguna capacidad que estaba
+    off (para que el bridge corra la nueva). Apagar no reanaliza: la SPA
+    oculta cajas con visibility; el flag active vale para la próxima corrida.
     """
     try:
         body = await request.json()
@@ -620,23 +622,33 @@ async def put_capabilities(request: Request) -> JSONResponse:
                 status_code=400,
             )
 
+    activating = False
     for key, value in raw_active.items():
+        was = bool(st.active.get(key, False)) and available.get(key, False)
+        new = bool(value) and available.get(key, False)
+        if new and not was:
+            activating = True
         # Clamp active ∧ available (vehicle stays true if somehow unset).
-        st.active[key] = bool(value) and available.get(key, False)
+        st.active[key] = new
 
     # Ensure vehicle remains active after any successful PUT.
     if available.get("vehicle", True):
         st.active["vehicle"] = True
 
-    _flush_detection_session()
-    st.generation += 1
-    logger.info(
-        "Capabilities updated gen=%d active=%s",
-        st.generation,
-        {k: v for k, v in st.active.items() if v},
-    )
+    if activating:
+        _flush_detection_session()
+        st.generation += 1
+        logger.info(
+            "Capabilities activated gen=%d active=%s",
+            st.generation,
+            {k: v for k, v in st.active.items() if v},
+        )
+    else:
+        logger.info(
+            "Capabilities updated (no re-run) active=%s",
+            {k: v for k, v in st.active.items() if v},
+        )
     return JSONResponse(_spa_capability_catalog())
-
 
 @app.post("/ingest")
 async def ingest(request: Request) -> JSONResponse:

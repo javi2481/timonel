@@ -1,8 +1,7 @@
-// App — shell de la SPA (dual visible/active capabilities + canvas UX).
+// App — shell SPA: inferencia en background; toggles = solo visibilidad.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getCapabilities,
-  putCapabilities,
   type CapabilityEntry,
 } from "./api/client";
 import { AnalyticsRow } from "./components/AnalyticsRow";
@@ -33,35 +32,38 @@ export function App() {
     void refreshCatalog();
   }, [refreshCatalog]);
 
-  // Reset visibility on generation bump. Do NOT reset server active.
+  // Reset visibility on generation bump (opt-in → todo oculto).
   useEffect(() => {
     setVisibility({});
     setHoveredId(null);
     setSelectedId(null);
   }, [state.generation]);
 
-  // After generation bump (upload or PUT), re-sync active from server.
   useEffect(() => {
     void refreshCatalog();
   }, [state.generation, refreshCatalog]);
 
-  const onToggleActive = useCallback(
-    async (entityType: string, active: boolean) => {
-      try {
-        const res = await putCapabilities({ [entityType]: active });
-        setCatalog(res.capabilities);
-      } catch (err) {
-        console.error(err);
-        void refreshCatalog();
-      }
-    },
-    [refreshCatalog],
-  );
-
-  const activeCapCount = useMemo(
-    () => Object.values(catalog).filter((c) => c.active).length,
+  const availableCapCount = useMemo(
+    () => Object.values(catalog).filter((c) => c.available).length,
     [catalog],
   );
+
+  const hitEntityTypes = useMemo(() => {
+    const present = new Set(state.events.map((e) => e.entity_type));
+    return [...present];
+  }, [state.events]);
+
+  const onShowHits = useCallback(() => {
+    setVisibility((prev) => {
+      const next = { ...prev };
+      for (const t of hitEntityTypes) next[t] = true;
+      return next;
+    });
+  }, [hitEntityTypes]);
+
+  const onHideAll = useCallback(() => {
+    setVisibility({});
+  }, []);
 
   return (
     <div className="vi-app">
@@ -86,12 +88,12 @@ export function App() {
             events={state.events}
             visibility={visibility}
             catalog={catalog}
+            status={state.status}
             onToggleVisible={(entityType, visible) =>
               setVisibility((prev) => ({ ...prev, [entityType]: visible }))
             }
-            onToggleActive={(entityType, active) =>
-              void onToggleActive(entityType, active)
-            }
+            onShowHits={onShowHits}
+            onHideAll={onHideAll}
           />
         </aside>
 
@@ -114,7 +116,7 @@ export function App() {
                 status={state.status}
                 errorMessage={state.errorMessage}
                 onRetry={retry}
-                activeCapCount={activeCapCount}
+                availableCapCount={availableCapCount}
               />
               <Legend events={state.events} visibility={visibility} />
             </>

@@ -25,7 +25,7 @@ from detection.common.geometry import (
 )
 from detection.common.preview import draw_preview, preview_box_color, preview_label
 from detection.faces import normalize_face_result
-from detection.objects import merge_coco_detections, normalize_object_detection_result
+from detection.objects import merge_coco_detections, normalize_object_detection_result, dedupe_same_label_ios
 from detection.pedestrians import merge_person_attributes, parse_person_attributes
 from detection.scene import (
     class_ratios_from_label_map,
@@ -357,6 +357,42 @@ class MergeCocoDetectionsTests(unittest.TestCase):
         self.assertEqual(len(merged), 2)
 
 
+class DedupeSameLabelIosTests(unittest.TestCase):
+    """bed⊂bed: IoU bajo, IoS alto → una sola caja (mayor score)."""
+
+    @staticmethod
+    def _obj(label: str, bbox: list[float], score: float, tid: str) -> dict:
+        return {
+            "track_id": tid,
+            "label": label,
+            "score": score,
+            "bbox": bbox,
+            "entity_type": "object",
+            "frame_ts": "now",
+        }
+
+    def test_nested_same_label_keeps_higher_score(self) -> None:
+        # Caja chica dentro de grande: IoU ≈ area_small/area_large < 0.5.
+        tight = self._obj("bed", [20.0, 20.0, 80.0, 80.0], 0.93, "o-1")
+        loose = self._obj("bed", [10.0, 10.0, 200.0, 200.0], 0.88, "o-2")
+        kept = dedupe_same_label_ios([loose, tight])
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["score"], 0.93)
+        self.assertEqual(kept[0]["track_id"], "o-1")
+
+    def test_different_labels_not_suppressed(self) -> None:
+        bed = self._obj("bed", [20.0, 20.0, 80.0, 80.0], 0.9, "o-1")
+        person = self._obj("person", [25.0, 25.0, 70.0, 70.0], 0.85, "o-2")
+        kept = dedupe_same_label_ios([bed, person])
+        self.assertEqual(len(kept), 2)
+
+    def test_distant_same_label_kept(self) -> None:
+        a = self._obj("bed", [0.0, 0.0, 40.0, 40.0], 0.9, "o-1")
+        b = self._obj("bed", [200.0, 200.0, 240.0, 240.0], 0.85, "o-2")
+        kept = dedupe_same_label_ios([a, b])
+        self.assertEqual(len(kept), 2)
+
+
 class DrawPreviewTests(unittest.TestCase):
     def test_returns_jpeg_bytes(self) -> None:
         frame = np.zeros((120, 160, 3), dtype=np.uint8)
@@ -660,6 +696,24 @@ class NormalizePoseAndTextTests(unittest.TestCase):
         self.assertEqual(len(dets), 1)
         self.assertEqual(dets[0]["entity_type"], "sign")
         self.assertEqual(dets[0]["label"], "stop sign")
+
+
+class FilterCapabilitiesForGatherTests(unittest.TestCase):
+    def test_always_includes_vehicles_and_pedestrians(self) -> None:
+        from bridge.main import filter_capabilities_for_gather
+
+        names = {c.name for c in filter_capabilities_for_gather(set())}
+        self.assertIn("vehicles", names)
+        self.assertIn("pedestrians", names)
+
+    def test_includes_available_registry_names(self) -> None:
+        from bridge.main import filter_capabilities_for_gather
+
+        names = {c.name for c in filter_capabilities_for_gather({"faces", "pose"})}
+        self.assertIn("faces", names)
+        self.assertIn("pose", names)
+        self.assertIn("vehicles", names)
+
 
 if __name__ == "__main__":
     unittest.main()

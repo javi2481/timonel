@@ -1,7 +1,8 @@
-// CapabilityPanel — dual controls: visible (client) + active (server).
-// visible: disabled when entity has no events. active: PUT /capabilities; vehicle locked.
+// CapabilityPanel — toggles de visibilidad (client-only).
+// Inferencia: bridge corre todo lo available; verde=hit, rojo=miss.
 import type { CapabilityEntry } from "../api/client";
 import { ENTITY_LABELS } from "../labels";
+import type { SessionStatus } from "../state/session";
 import type { PerceptionEvent } from "../types/epp.gen";
 
 interface CapabilityDef {
@@ -39,6 +40,8 @@ const GROUPS: { title: string; items: CapabilityDef[] }[] = [
   },
 ];
 
+type CapState = "pending" | "hit" | "miss" | "unavailable";
+
 function EyeIcon({ off }: { off?: boolean }) {
   if (off) {
     return (
@@ -57,88 +60,134 @@ function EyeIcon({ off }: { off?: boolean }) {
   );
 }
 
+function analysisComplete(status: SessionStatus): boolean {
+  return status === "ready" || status === "degraded" || status === "empty";
+}
+
+function isAnalyzing(status: SessionStatus): boolean {
+  return status === "uploading" || status === "processing";
+}
+
+function capState(
+  status: SessionStatus,
+  available: boolean,
+  count: number,
+): CapState {
+  if (!available) return "unavailable";
+  if (isAnalyzing(status)) return "pending";
+  if (!analysisComplete(status)) return "unavailable";
+  return count > 0 ? "hit" : "miss";
+}
+
 interface Props {
   events: PerceptionEvent[];
   visibility: Record<string, boolean>;
   catalog: Record<string, CapabilityEntry>;
+  status: SessionStatus;
   onToggleVisible: (entityType: string, visible: boolean) => void;
-  onToggleActive: (entityType: string, active: boolean) => void;
+  onShowHits: () => void;
+  onHideAll: () => void;
 }
 
 export function CapabilityPanel({
   events,
   visibility,
   catalog,
+  status,
   onToggleVisible,
-  onToggleActive,
+  onShowHits,
+  onHideAll,
 }: Props) {
-  const present = new Set(events.map((e) => e.entity_type));
+  const counts = new Map<string, number>();
+  for (const e of events) {
+    counts.set(e.entity_type, (counts.get(e.entity_type) ?? 0) + 1);
+  }
+
+  const hitTypes = GROUPS.flatMap((g) => g.items)
+    .map((i) => i.entityType)
+    .filter((t) => (counts.get(t) ?? 0) > 0);
+  const complete = analysisComplete(status);
+  const hasHits = hitTypes.length > 0;
 
   return (
     <div className="vi-capability-panel">
       <div className="vi-cap-legend">
-        <span title="Mostrar en la foto">
-          <EyeIcon /> mostrar
+        <span title="Solo ocultar/mostrar cajas y etiquetas (sin reanalizar)">
+          <EyeIcon /> mostrar / ocultar
         </span>
-        <span title="Correr inferencia">⚡ inferencia</span>
+      </div>
+      <div className="vi-cap-actions">
+        <button
+          type="button"
+          className="vi-cap-action"
+          disabled={!complete || !hasHits}
+          onClick={onShowHits}
+        >
+          Mostrar hits
+        </button>
+        <button
+          type="button"
+          className="vi-cap-action"
+          disabled={!complete || !hasHits}
+          onClick={onHideAll}
+        >
+          Ocultar todo
+        </button>
       </div>
       {GROUPS.map((group) => (
         <div className="vi-capability-group" key={group.title}>
           <div className="vi-capability-group-title">{group.title}</div>
           {group.items.map((item) => {
             const label = ENTITY_LABELS[item.entityType] ?? item.entityType;
-            const hasEvents = present.has(item.entityType);
-            const visibleChecked = visibility[item.entityType] !== false;
+            const count = counts.get(item.entityType) ?? 0;
             const entry = catalog[item.entityType];
             const available = entry?.available === true;
-            const activeChecked = entry?.active === true;
-            const critical = entry?.critical === true || item.entityType === "vehicle";
-            const activeLocked = critical || !available;
+            const state = capState(status, available, count);
+            const visibleChecked = visibility[item.entityType] === true;
+            const canToggle = state === "hit";
+            const labelText =
+              state === "hit" ? `${label} · ${count}` : label;
+
             return (
               <div
                 key={item.entityType}
-                className={`vi-capability-item${!hasEvents && !available ? " vi-capability-disabled" : ""}`}
+                className={`vi-capability-item vi-cap-${state}`}
               >
-                <span className="vi-capability-label">{label}</span>
+                <span className="vi-capability-label">{labelText}</span>
+                <span
+                  className={`vi-cap-status vi-cap-status-${state}`}
+                  title={
+                    state === "pending"
+                      ? "Analizando…"
+                      : state === "hit"
+                        ? `${count} detección${count === 1 ? "" : "es"}`
+                        : state === "miss"
+                          ? "Sin detecciones"
+                          : "No disponible en este deploy"
+                  }
+                  aria-hidden
+                />
                 <button
                   type="button"
-                  className={`vi-eye${!hasEvents || !visibleChecked ? " off" : ""}`}
-                  disabled={!hasEvents}
-                  title={hasEvents ? "Visible" : "sin detecciones"}
+                  className={`vi-eye${!visibleChecked || !canToggle ? " off" : ""}`}
+                  disabled={!canToggle}
+                  title={
+                    canToggle
+                      ? visibleChecked
+                        ? "Ocultar cajas"
+                        : "Mostrar cajas"
+                      : state === "pending"
+                        ? "Analizando…"
+                        : state === "miss"
+                          ? "Sin detecciones"
+                          : "No disponible"
+                  }
                   aria-label={`${label} visible`}
-                  aria-pressed={hasEvents && visibleChecked}
+                  aria-pressed={canToggle && visibleChecked}
                   onClick={() => onToggleVisible(item.entityType, !visibleChecked)}
                 >
-                  <EyeIcon off={!hasEvents || !visibleChecked} />
+                  <EyeIcon off={!canToggle || !visibleChecked} />
                 </button>
-                <button
-                  type="button"
-                  role="switch"
-                  className={`vi-sw${activeChecked ? " on" : ""}${critical ? " locked" : ""}`}
-                  disabled={activeLocked}
-                  aria-checked={activeChecked}
-                  aria-label={`${label} active`}
-                  title={
-                    critical
-                      ? "Vehicle siempre activo"
-                      : available
-                        ? "Inferencia activa"
-                        : "No disponible en este deploy"
-                  }
-                  onClick={() => {
-                    if (!activeLocked) onToggleActive(item.entityType, !activeChecked);
-                  }}
-                  onKeyDown={(e) => {
-                    if (activeLocked) return;
-                    if (e.key === " " || e.key === "Enter") {
-                      e.preventDefault();
-                      onToggleActive(item.entityType, !activeChecked);
-                    }
-                  }}
-                />
-                {!hasEvents && (
-                  <em className="vi-capability-empty-hint">sin detecciones</em>
-                )}
               </div>
             );
           })}

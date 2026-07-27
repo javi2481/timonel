@@ -1,7 +1,5 @@
 // AnalyticsRow — agregados 100% client-side sobre los eventos VISIBLES
-// (Fase 1, addendum-s2-spa-s3). Nada de esto pega al backend: se recalcula
-// en cada render a partir del array de eventos ya filtrado por
-// CapabilityPanel — coherente con "lo que ves es lo que se analiza".
+// (opt-in: solo entity_types con visibility === true).
 import { useMemo } from "react";
 import { colorForEvent, VEHICLE_TYPE_COLORS } from "../colors/entityColors.gen";
 import type { PerceptionEvent } from "../types/epp.gen";
@@ -13,7 +11,7 @@ interface Props {
 }
 
 function isVisible(event: PerceptionEvent, visibility: Record<string, boolean>): boolean {
-  return visibility[event.entity_type] !== false;
+  return visibility[event.entity_type] === true;
 }
 
 export function AnalyticsRow({ events, visibility }: Props) {

@@ -196,7 +196,7 @@ class TestRunDetectionsLifecycleHook(unittest.IsolatedAsyncioTestCase):
 
         with patch.dict(os.environ, {"ENABLE_EVIDENCE_CASCADE": "true"}):
             with patch.object(
-                bridge_main, "fetch_active_capability_names", fake_fetch
+                bridge_main, "fetch_available_capability_names", fake_fetch
             ):
                 with patch.object(bridge_main, "gather_capabilities", fake_gather):
                     with patch.object(

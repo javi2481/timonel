@@ -13,7 +13,7 @@ interface Props {
 }
 
 export function Legend({ events, visibility }: Props) {
-  const visible = events.filter((e) => visibility[e.entity_type] !== false);
+  const visible = events.filter((e) => visibility[e.entity_type] === true);
   if (visible.length === 0) return null;
 
   const types = new Set(visible.map((e) => e.entity_type));

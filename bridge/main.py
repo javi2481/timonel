@@ -62,6 +62,7 @@ from detection.registry import (
     Capability,
     attach_object_track_ids,
     capability_status_line,
+    dedupe_same_label_ios,
     merge_coco_detections,
     merge_person_attributes,
     reset_all_trackers,
@@ -154,10 +155,11 @@ async def fetch_current_media(client: httpx.AsyncClient) -> Optional[dict[str, A
     }
 
 
-async def fetch_active_capability_names(client: httpx.AsyncClient) -> set[str]:
-    """Registry names con active=true desde GET /capabilities.
+async def fetch_available_capability_names(client: httpx.AsyncClient) -> set[str]:
+    """Registry names con available=true desde GET /capabilities.
 
-    Fallback: todos los CAPABILITIES (comportamiento pre-Fase2) si falla el GET.
+    La SPA ya no gatea inferencia con active; se corre todo lo deploy-available.
+    Fallback: todos los CAPABILITIES si falla el GET.
     """
     try:
         resp = await client.get(ADAPTER_CAPABILITIES_URL, timeout=HTTP_TIMEOUT)
@@ -173,19 +175,19 @@ async def fetch_active_capability_names(client: httpx.AsyncClient) -> set[str]:
 
     names: set[str] = set()
     for entry in caps.values():
-        if isinstance(entry, dict) and entry.get("active") and entry.get("name"):
+        if isinstance(entry, dict) and entry.get("available") and entry.get("name"):
             names.add(str(entry["name"]))
     return names
 
 
-def filter_capabilities_for_gather(active_names: set[str]) -> list:
-    """SPA-active + always vehicles + pedestrians (ENABLE short-circuits inside)."""
+def filter_capabilities_for_gather(available_names: set[str]) -> list:
+    """Deploy-available + always vehicles + pedestrians (ENABLE short-circuits inside)."""
     return [
         cap
         for cap in CAPABILITIES
         if cap.name == "vehicles"
         or cap.name == "pedestrians"
-        or cap.name in active_names
+        or cap.name in available_names
     ]
 
 
@@ -260,8 +262,8 @@ async def run_detections(
     h, w = frame_hires.shape[:2]
     frame_wh = (w, h)
 
-    active_names = await fetch_active_capability_names(client)
-    caps = filter_capabilities_for_gather(active_names)
+    available_names = await fetch_available_capability_names(client)
+    caps = filter_capabilities_for_gather(available_names)
     cascade_cfg = CascadeConfig.from_env()
     tiling = ENABLE_INFER_TILING
     # Tiled caps run via to_thread on hires; exclude from JPEG gather.
@@ -340,6 +342,8 @@ async def run_detections(
         object_detections = merge_coco_detections(
             vehicle_detections, object_detections
         )
+        # Misma clase COCO anidada (bed⊂bed): IoU-NMS no alcanza; IoS sí.
+        object_detections = dedupe_same_label_ios(object_detections)
     else:
         object_detections = []
 
