@@ -1,9 +1,16 @@
 // CapabilityPanel — toggles de visibilidad (client-only).
 // Inferencia: bridge corre todo lo available; verde=hit, rojo=miss.
+// Chips / iconos / colores reflejan qué detectó cada capacidad.
+import type { CSSProperties } from "react";
 import type { CapabilityEntry } from "../api/client";
-import { ENTITY_LABELS } from "../labels";
+import {
+  ENTITY_TYPE_COLORS,
+  VEHICLE_TYPE_COLORS,
+} from "../colors/entityColors.gen";
+import { ENTITY_LABELS, summarizeCapabilityChips } from "../labels";
 import type { SessionStatus } from "../state/session";
 import type { PerceptionEvent } from "../types/epp.gen";
+import { CapIcon } from "./CapIcon";
 
 interface CapabilityDef {
   entityType: string;
@@ -24,18 +31,18 @@ const GROUPS: { title: string; items: CapabilityDef[] }[] = [
       { entityType: "scene" },
       { entityType: "pose" },
       { entityType: "text" },
-      { entityType: "face_id" },
+      { entityType: "sign" },
+      { entityType: "open_vocab" },
     ],
   },
   {
     title: "Experimental",
     items: [
-      { entityType: "sign" },
+      { entityType: "face_id" },
       { entityType: "scene_cls" },
       { entityType: "instance" },
       { entityType: "small_object" },
       { entityType: "anomaly" },
-      { entityType: "open_vocab" },
     ],
   },
 ];
@@ -68,15 +75,26 @@ function isAnalyzing(status: SessionStatus): boolean {
   return status === "uploading" || status === "processing";
 }
 
+/** Durante processing, hits parciales (ingest final=false) ya cuentan como hit. */
 function capState(
   status: SessionStatus,
   available: boolean,
   count: number,
 ): CapState {
   if (!available) return "unavailable";
-  if (isAnalyzing(status)) return "pending";
+  if (isAnalyzing(status)) {
+    if (count > 0) return "hit";
+    return "pending";
+  }
   if (!analysisComplete(status)) return "unavailable";
   return count > 0 ? "hit" : "miss";
+}
+
+function entityAccent(entityType: string): string {
+  if (ENTITY_TYPE_COLORS[entityType]) return ENTITY_TYPE_COLORS[entityType];
+  if (entityType === "vehicle") return VEHICLE_TYPE_COLORS.vehicle ?? "#ff5050";
+  if (entityType === "object") return VEHICLE_TYPE_COLORS.car ?? "#00a0ff";
+  return "#8a9bb0";
 }
 
 interface Props {
@@ -103,11 +121,17 @@ export function CapabilityPanel({
     counts.set(e.entity_type, (counts.get(e.entity_type) ?? 0) + 1);
   }
 
-  const hitTypes = GROUPS.flatMap((g) => g.items)
+  const availableTypes = GROUPS.flatMap((g) => g.items)
     .map((i) => i.entityType)
-    .filter((t) => (counts.get(t) ?? 0) > 0);
+    .filter((t) => catalog[t]?.available === true);
+
+  const hitCount = availableTypes.filter((t) => (counts.get(t) ?? 0) > 0).length;
+  const missCount = analysisComplete(status)
+    ? availableTypes.filter((t) => (counts.get(t) ?? 0) === 0).length
+    : 0;
   const complete = analysisComplete(status);
-  const hasHits = hitTypes.length > 0;
+  const hasHits = hitCount > 0;
+  const canShowHits = hasHits && (complete || isAnalyzing(status));
 
   return (
     <div className="vi-capability-panel">
@@ -115,12 +139,18 @@ export function CapabilityPanel({
         <span title="Solo ocultar/mostrar cajas y etiquetas (sin reanalizar)">
           <EyeIcon /> mostrar / ocultar
         </span>
+        {(complete || hasHits) && (
+          <span className="vi-cap-summary" title="Hits vs miss en capacidades disponibles">
+            {hitCount} hits
+            {complete ? ` · ${missCount} miss` : " · …"}
+          </span>
+        )}
       </div>
       <div className="vi-cap-actions">
         <button
           type="button"
           className="vi-cap-action"
-          disabled={!complete || !hasHits}
+          disabled={!canShowHits}
           onClick={onShowHits}
         >
           Mostrar hits
@@ -128,71 +158,111 @@ export function CapabilityPanel({
         <button
           type="button"
           className="vi-cap-action"
-          disabled={!complete || !hasHits}
+          disabled={!hasHits}
           onClick={onHideAll}
         >
           Ocultar todo
         </button>
       </div>
-      {GROUPS.map((group) => (
-        <div className="vi-capability-group" key={group.title}>
-          <div className="vi-capability-group-title">{group.title}</div>
-          {group.items.map((item) => {
-            const label = ENTITY_LABELS[item.entityType] ?? item.entityType;
-            const count = counts.get(item.entityType) ?? 0;
-            const entry = catalog[item.entityType];
-            const available = entry?.available === true;
-            const state = capState(status, available, count);
-            const visibleChecked = visibility[item.entityType] === true;
-            const canToggle = state === "hit";
-            const labelText =
-              state === "hit" ? `${label} · ${count}` : label;
+      {GROUPS.map((group) => {
+        const visibleItems = group.items.filter(
+          (item) => catalog[item.entityType]?.available === true,
+        );
+        if (visibleItems.length === 0) return null;
+        return (
+          <div className="vi-capability-group" key={group.title}>
+            <div className="vi-capability-group-title">{group.title}</div>
+            {visibleItems.map((item) => {
+              const label = ENTITY_LABELS[item.entityType] ?? item.entityType;
+              const count = counts.get(item.entityType) ?? 0;
+              const state = capState(status, true, count);
+              const visibleChecked = visibility[item.entityType] === true;
+              const canToggle = state === "hit";
+              const accent = entityAccent(item.entityType);
+              const { chips, extra } =
+                state === "hit"
+                  ? summarizeCapabilityChips(item.entityType, events)
+                  : { chips: [] as string[], extra: 0 };
+              const labelText =
+                state === "hit" ? `${label} · ${count}` : label;
+              const activeLayer = canToggle && visibleChecked;
+              const itemStyle = {
+                ["--vi-cap-accent" as string]: accent,
+              } as CSSProperties;
 
-            return (
-              <div
-                key={item.entityType}
-                className={`vi-capability-item vi-cap-${state}`}
-              >
-                <span className="vi-capability-label">{labelText}</span>
-                <span
-                  className={`vi-cap-status vi-cap-status-${state}`}
-                  title={
-                    state === "pending"
-                      ? "Analizando…"
-                      : state === "hit"
-                        ? `${count} detección${count === 1 ? "" : "es"}`
-                        : state === "miss"
-                          ? "Sin detecciones"
-                          : "No disponible en este deploy"
-                  }
-                  aria-hidden
-                />
-                <button
-                  type="button"
-                  className={`vi-eye${!visibleChecked || !canToggle ? " off" : ""}`}
-                  disabled={!canToggle}
-                  title={
-                    canToggle
-                      ? visibleChecked
-                        ? "Ocultar cajas"
-                        : "Mostrar cajas"
-                      : state === "pending"
-                        ? "Analizando…"
-                        : state === "miss"
-                          ? "Sin detecciones"
-                          : "No disponible"
-                  }
-                  aria-label={`${label} visible`}
-                  aria-pressed={canToggle && visibleChecked}
-                  onClick={() => onToggleVisible(item.entityType, !visibleChecked)}
+              return (
+                <div
+                  key={item.entityType}
+                  className={`vi-capability-item vi-cap-${state}${activeLayer ? " vi-cap-layer-on" : ""}`}
+                  style={itemStyle}
                 >
-                  <EyeIcon off={!canToggle || !visibleChecked} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      ))}
+                  <span className="vi-capability-icon" style={{ color: accent }}>
+                    <CapIcon entityType={item.entityType} color={accent} />
+                  </span>
+                  <div className="vi-capability-body">
+                    <span className="vi-capability-label">{labelText}</span>
+                    {chips.length > 0 && (
+                      <div className="vi-cap-chips">
+                        {chips.map((chip) => (
+                          <span
+                            key={chip}
+                            className="vi-cap-chip"
+                            style={{ borderColor: accent, color: accent }}
+                          >
+                            {chip}
+                          </span>
+                        ))}
+                        {extra > 0 && (
+                          <span className="vi-cap-chip vi-cap-chip-more">
+                            +{extra}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={`vi-cap-status vi-cap-status-${state}`}
+                    style={state === "hit" ? { background: accent } : undefined}
+                    title={
+                      state === "pending"
+                        ? "Analizando…"
+                        : state === "hit"
+                          ? `${count} detección${count === 1 ? "" : "es"}`
+                          : state === "miss"
+                            ? "Sin detecciones"
+                            : "No disponible en este deploy"
+                    }
+                    aria-hidden
+                  />
+                  <button
+                    type="button"
+                    className={`vi-eye${!visibleChecked || !canToggle ? " off" : ""}`}
+                    disabled={!canToggle}
+                    title={
+                      canToggle
+                        ? visibleChecked
+                          ? "Ocultar cajas"
+                          : "Mostrar cajas"
+                        : state === "pending"
+                          ? "Analizando…"
+                          : state === "miss"
+                            ? "Sin detecciones"
+                            : "No disponible"
+                    }
+                    aria-label={`${label} visible`}
+                    aria-pressed={canToggle && visibleChecked}
+                    onClick={() =>
+                      onToggleVisible(item.entityType, !visibleChecked)
+                    }
+                  >
+                    <EyeIcon off={!canToggle || !visibleChecked} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
     </div>
   );
 }

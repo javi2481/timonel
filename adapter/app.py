@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import (
     FileResponse,
@@ -150,6 +150,8 @@ class AppState:
     frame_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     media_seen_mtimes: dict[str, float] = field(default_factory=dict)
     media_watch_bootstrapped: bool = False
+    # Override de prompt OV para la generación activa (None = default env del bridge).
+    open_vocab_prompt: Optional[str] = None
 
 
 def _env_enabled(name: str, default: str = "false") -> bool:
@@ -177,11 +179,99 @@ _SPA_CAPABILITY_DEFS: list[tuple[str, str, Optional[str], bool]] = [
 
 
 def _compute_available() -> dict[str, bool]:
-    """available por entity_type desde ENABLE_* (vehicle/object siempre True)."""
+    """available = ENABLE_*; si CAPABILITY_HEALTH_CHECK, también health del serving."""
+    check_health = _env_enabled("CAPABILITY_HEALTH_CHECK", "false")
     out: dict[str, bool] = {}
     for entity_type, _name, env_name, _critical in _SPA_CAPABILITY_DEFS:
-        out[entity_type] = True if env_name is None else _env_enabled(env_name)
+        enabled = True if env_name is None else _env_enabled(env_name)
+        if not enabled:
+            out[entity_type] = False
+            continue
+        if not check_health:
+            out[entity_type] = True
+            continue
+        url = _paddlex_url_for_entity(entity_type)
+        if url is None:
+            out[entity_type] = True
+            continue
+        out[entity_type] = _service_healthy(url)
     return out
+
+
+# entity_type SPA → URL del serving (text→ocr, sign→open-vocab).
+def _paddlex_url_for_entity(entity_type: str) -> Optional[str]:
+    mapping = {
+        "vehicle": os.getenv("PADDLEX_URL", "http://paddlex:8080"),
+        "object": os.getenv("PADDLEX_OBJECTS_URL", "http://paddlex-objects:8082"),
+        "face": os.getenv("PADDLEX_FACES_URL", "http://paddlex-faces:8083"),
+        "scene": os.getenv("PADDLEX_SCENE_URL", "http://paddlex-scene:8085"),
+        "pose": os.getenv("PADDLEX_POSE_URL", "http://paddlex-pose:8086"),
+        "text": os.getenv("PADDLEX_OCR_URL", "http://paddlex-ocr:8081"),
+        "face_id": os.getenv("PADDLEX_FACE_ID_URL", "http://paddlex-face-id:8087"),
+        "sign": os.getenv(
+            "PADDLEX_SIGNS_OV_URL",
+            os.getenv("PADDLEX_OPEN_VOCAB_URL", "http://paddlex-open-vocab:8093"),
+        ),
+        "scene_cls": os.getenv("PADDLEX_SCENE_CLS_URL", "http://paddlex-scene-cls:8089"),
+        "instance": os.getenv("PADDLEX_INSTANCES_URL", "http://paddlex-instances:8090"),
+        "small_object": os.getenv(
+            "PADDLEX_SMALL_OBJECTS_URL", "http://paddlex-small-objects:8091"
+        ),
+        "anomaly": os.getenv("PADDLEX_ANOMALY_URL", "http://paddlex-anomaly:8092"),
+        "open_vocab": os.getenv(
+            "PADDLEX_OPEN_VOCAB_URL", "http://paddlex-open-vocab:8093"
+        ),
+    }
+    return mapping.get(entity_type)
+
+
+_HEALTH_TTL_S = float(os.getenv("CAPABILITY_HEALTH_TTL_S", "15"))
+_HEALTH_TIMEOUT_S = float(os.getenv("CAPABILITY_HEALTH_TIMEOUT_S", "1.5"))
+_health_cache: dict[str, tuple[float, bool]] = {}
+
+
+def _service_healthy(base_url: str) -> bool:
+    """GET /docs o /openapi.json con cache TTL. Falla → unavailable."""
+    key = base_url.rstrip("/")
+    now = time.monotonic()
+    cached = _health_cache.get(key)
+    if cached is not None and now - cached[0] < _HEALTH_TTL_S:
+        return cached[1]
+
+    ok = False
+    try:
+        import urllib.error
+        import urllib.request
+
+        for path in ("/docs", "/openapi.json"):
+            req = urllib.request.Request(
+                f"{key}{path}", method="GET", headers={"Accept": "*/*"}
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=_HEALTH_TIMEOUT_S) as resp:
+                    if 200 <= getattr(resp, "status", 200) < 500:
+                        ok = True
+                        break
+            except urllib.error.HTTPError as exc:
+                # 404 en /docs pero serving vivo → probar siguiente path
+                if exc.code < 500:
+                    continue
+                break
+            except Exception:
+                break
+    except Exception as exc:
+        logger.warning("Capability health check failed for %s: %s", key, exc)
+        ok = False
+
+    if not ok:
+        logger.warning("Capability service unhealthy: %s", key)
+    _health_cache[key] = (now, ok)
+    return ok
+
+
+def reset_capability_health_cache() -> None:
+    """Solo tests."""
+    _health_cache.clear()
 
 
 def _spa_capability_catalog() -> dict[str, Any]:
@@ -299,11 +389,24 @@ def _flush_detection_session() -> None:
     st.stats["ingested"] = 0
     st.stats["emitted"] = 0
     st.stats["paddlex_degraded"] = False
+    st.open_vocab_prompt = None
     # Empuja marca al MJPEG: si queda None el browser conserva el último frame.
     st.latest_frame = _PLACEHOLDER_JPEG or None
 
 
-def _apply_media_selection(name: str) -> Optional[dict[str, Any]]:
+def _set_open_vocab_prompt(raw: Optional[str]) -> None:
+    """Guarda override de prompt OV (None/vacío = default env del bridge)."""
+    st = state()
+    if raw is None:
+        st.open_vocab_prompt = None
+        return
+    text = str(raw).strip()
+    st.open_vocab_prompt = text or None
+
+
+def _apply_media_selection(
+    name: str, *, open_vocab_prompt: Optional[str] = None
+) -> Optional[dict[str, Any]]:
     """Selecciona foto allow-listed; bump generation. None si inválida."""
     st = state()
     resolved = _find_media_path(name)
@@ -315,12 +418,14 @@ def _apply_media_selection(name: str) -> Optional[dict[str, Any]]:
     _flush_detection_session()
     st.current_media = {"name": name, "type": "image"}
     st.generation += 1
+    _set_open_vocab_prompt(open_vocab_prompt)
     logger.info(
-        "Media selected: %s (type=image, gen=%d, path=%s) trace_id=%s",
+        "Media selected: %s (type=image, gen=%d, path=%s) trace_id=%s ov_prompt=%s",
         name,
         st.generation,
         path,
         st.generation,
+        "set" if st.open_vocab_prompt else "default",
     )
     return {"ok": True, "name": name, "generation": st.generation}
 
@@ -662,6 +767,10 @@ async def ingest(request: Request) -> JSONResponse:
     """
     Recibe detecciones JSON de PaddleX (vía bridge) y las agrega al track_cache.
 
+    `final` (default true): si false, actualiza eventos de la generación sin
+    avanzar `last_ingest_generation` (progress parcial oleada 1). Si true,
+    confirma completitud para la SPA.
+
     Emisión (dos caminos, ambos pasan por `_sweep_expired_tracks` → `_flush_track`):
     - Foto activa (`current_media`): marca todos los tracks finalized y barre al
       instante (sin esperar TRACK_TTL). Es el camino del modo foto-only actual.
@@ -679,17 +788,25 @@ async def ingest(request: Request) -> JSONResponse:
         else:
             return JSONResponse({"ok": False, "error": "expected object"}, status_code=400)
 
+    raw_final = body.get("final", True)
+    if isinstance(raw_final, str):
+        final = raw_final.strip().lower() in ("1", "true", "yes")
+    else:
+        final = bool(raw_final)
+
     raw_trace = body.get("trace_id", body.get("generation"))
     trace_id = None if raw_trace is None else str(raw_trace)
     token = _trace_id_var.set(trace_id)
     try:
         st = state()
 
-        # El bridge correlaciona cada /ingest con la generación de foto activa
-        # via trace_id (o generation) — si parsea como int, es la confirmación
-        # de que esa generación fue efectivamente ingerida (usado por la SPA
-        # para derivar completitud: generation == last_ingest_generation).
-        if trace_id is not None:
+        # Snapshot por ingest (parcial o final): reemplaza tracks/eventos de la
+        # generación activa para no acumular duplicados entre oleadas.
+        st.events_buffer.clear()
+        st.track_cache.clear()
+
+        # Completitud SPA solo con ingest final.
+        if final and trace_id is not None:
             try:
                 st.last_ingest_generation = int(trace_id)
             except (TypeError, ValueError):
@@ -699,7 +816,13 @@ async def ingest(request: Request) -> JSONResponse:
         if body.get("degraded") is True:
             st.stats["paddlex_degraded"] = True
             return JSONResponse(
-                {"ok": True, "degraded": True, "accepted": 0, "trace_id": trace_id}
+                {
+                    "ok": True,
+                    "degraded": True,
+                    "accepted": 0,
+                    "final": final,
+                    "trace_id": trace_id,
+                }
             )
 
         detections = _extract_detections(body)
@@ -709,6 +832,7 @@ async def ingest(request: Request) -> JSONResponse:
                     "ok": True,
                     "accepted": 0,
                     "message": "no detections",
+                    "final": final,
                     "trace_id": trace_id,
                 }
             )
@@ -739,6 +863,7 @@ async def ingest(request: Request) -> JSONResponse:
                 "ok": True,
                 "accepted": accepted,
                 "tracks_active": len(st.track_cache),
+                "final": final,
                 "trace_id": trace_id,
             }
         )
@@ -844,11 +969,17 @@ async def media_current() -> dict[str, Any]:
     """Fuente activa actual + token de generación (LMP-2)."""
     st = state()
     if st.current_media is None:
-        return {"name": None, "type": None, "generation": st.generation}
+        return {
+            "name": None,
+            "type": None,
+            "generation": st.generation,
+            "open_vocab_prompt": None,
+        }
     return {
         "name": st.current_media["name"],
         "type": st.current_media["type"],
         "generation": st.generation,
+        "open_vocab_prompt": st.open_vocab_prompt,
     }
 
 
@@ -947,8 +1078,14 @@ async def media_select(body: MediaSelectBody) -> JSONResponse:
 
 
 @app.post("/media/upload")
-async def media_upload(file: UploadFile = File(...)) -> JSONResponse:
+async def media_upload(
+    file: UploadFile = File(...),
+    open_vocab_prompt: Optional[str] = Form(None),
+) -> JSONResponse:
     """Recibe una imagen, la guarda en MEDIA_DIR/images y la auto-selecciona.
+
+    Form opcional `open_vocab_prompt`: override de cola larga para esta foto.
+    Vacío/omitido → bridge usa OPEN_VOCAB_PROMPT del env.
 
     Si el contenido ya existe en la carpeta (p. ej. re-subir una de
     ``imagenes_muestra``), no escribe otra copia: solo la selecciona.
@@ -1009,7 +1146,7 @@ async def media_upload(file: UploadFile = File(...)) -> JSONResponse:
         await file.close()
 
     _remember_media_mtime(safe_name)
-    result = _apply_media_selection(safe_name)
+    result = _apply_media_selection(safe_name, open_vocab_prompt=open_vocab_prompt)
     if result is None:
         return JSONResponse(
             {

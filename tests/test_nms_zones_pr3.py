@@ -14,6 +14,7 @@ from adapter.epp_core import PerceptionEvent, SCHEMA_VERSION, _normalize_detecti
 from detection.common.nms_cross_cap import (
     apply_cross_cap_nms,
     class_id_for_cross_cap_nms,
+    dedupe_spatial_modality_caps,
     normalize_detections_data_keys,
     reset_cross_cap_class_ids,
     vi_det_to_detections,
@@ -82,6 +83,80 @@ class NmsCrossCapBehaviorTests(unittest.TestCase):
         kept = apply_cross_cap_nms(dets, threshold=0.5)
         types = {d["entity_type"] for d in kept}
         self.assertEqual(types, {"face", "object"})
+        self.assertEqual(len(kept), 2)
+
+    def test_object_and_open_vocab_overlap_keeps_object(self) -> None:
+        dets = [
+            {
+                "track_id": "ov-1",
+                "label": "car",
+                "score": 0.99,
+                "bbox": [100.0, 100.0, 200.0, 200.0],
+                "entity_type": "open_vocab",
+            },
+            {
+                "track_id": "o-1",
+                "label": "car",
+                "score": 0.50,
+                "bbox": [102.0, 102.0, 202.0, 202.0],
+                "entity_type": "object",
+            },
+        ]
+        kept = apply_cross_cap_nms(dets, threshold=0.5)
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["entity_type"], "object")
+        self.assertEqual(kept[0]["track_id"], "o-1")
+
+    def test_vehicle_beats_object_and_open_vocab(self) -> None:
+        box = [10.0, 10.0, 100.0, 100.0]
+        dets = [
+            {
+                "track_id": "ov-1",
+                "label": "car",
+                "score": 0.95,
+                "bbox": box,
+                "entity_type": "open_vocab",
+            },
+            {
+                "track_id": "o-1",
+                "label": "car",
+                "score": 0.90,
+                "bbox": [11.0, 11.0, 101.0, 101.0],
+                "entity_type": "object",
+            },
+            {
+                "track_id": "v-1",
+                "label": "car",
+                "score": 0.40,
+                "bbox": [12.0, 12.0, 102.0, 102.0],
+                "entity_type": "vehicle",
+                "color": "red",
+            },
+        ]
+        kept = apply_cross_cap_nms(dets, threshold=0.5)
+        self.assertEqual(len(kept), 1)
+        self.assertEqual(kept[0]["entity_type"], "vehicle")
+        self.assertEqual(kept[0]["track_id"], "v-1")
+        self.assertEqual(kept[0]["color"], "red")
+
+    def test_spatial_dedupe_leaves_non_overlapping(self) -> None:
+        dets = [
+            {
+                "track_id": "o-1",
+                "label": "dog",
+                "score": 0.8,
+                "bbox": [0.0, 0.0, 50.0, 50.0],
+                "entity_type": "object",
+            },
+            {
+                "track_id": "ov-1",
+                "label": "helmet",
+                "score": 0.8,
+                "bbox": [200.0, 200.0, 250.0, 250.0],
+                "entity_type": "open_vocab",
+            },
+        ]
+        kept = dedupe_spatial_modality_caps(dets, threshold=0.5)
         self.assertEqual(len(kept), 2)
 
     def test_duplicate_objects_deduped_survivor_keeps_track_and_plate(self) -> None:

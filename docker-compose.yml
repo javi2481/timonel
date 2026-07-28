@@ -2,7 +2,10 @@
 # Orquestar, no inventar. Un solo comando: docker compose up --build
 #
 # Perfiles:
-#   (default)  las 13 capacidades paddlex + adapter + bridge (docker compose up)
+#   (default)  base hot (~8 paddlex: vehicles,ocr,objects,faces,ped,scene,pose,open-vocab)
+#              + adapter + bridge
+#   --profile experimental → face-id, scene-cls, instances, small-objects, anomaly
+#   --profile legacy-signs → paddlex-signs :8088 (rollback COCO; producto usa OV :8093)
 #   --profile demo   → bridge en DEMO_MODE (sin fotos/GPU)
 #   --profile rules  → JetLinks opcional
 #   --profile gpu    → PaddleX con runtime NVIDIA (requiere NVIDIA Container Toolkit;
@@ -31,7 +34,7 @@ x-paddlex-build: &paddlex-build
     BASE_IMAGE: ${PADDLE_BASE_IMAGE:-paddlepaddle/paddle:3.0.0}
 
 # Techo por contenedor paddlex. Host de referencia: PC-Javier (32 GB, Ryzen 8500G).
-# Sin cpus: — 6c/12t se reparten entre las 13 capacidades; el kernel decide.
+# Sin cpus: — 6c/12t se reparten entre los paddlex del profile activo; el kernel decide.
 x-limits-paddlex: &limits-paddlex
   mem_limit: 2000m
   mem_reservation: 512m
@@ -178,7 +181,9 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8086/docs || curl -fsS http://127.0.0.1:8086/openapi.json || exit 1"]
       <<: *paddlex-health
 
+  # Opt-in: docker compose --profile experimental up …
   paddlex-face-id:
+    profiles: ["experimental"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-face-id:local
     container_name: vi-paddlex-face-id
@@ -217,7 +222,9 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8088/docs || curl -fsS http://127.0.0.1:8088/openapi.json || exit 1"]
       <<: *paddlex-health
 
+  # Opt-in: docker compose --profile experimental up …
   paddlex-scene-cls:
+    profiles: ["experimental"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-scene-cls:local
     container_name: vi-paddlex-scene-cls
@@ -236,7 +243,9 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8089/docs || curl -fsS http://127.0.0.1:8089/openapi.json || exit 1"]
       <<: *paddlex-health
 
+  # Opt-in: docker compose --profile experimental up …
   paddlex-instances:
+    profiles: ["experimental"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-instances:local
     container_name: vi-paddlex-instances
@@ -253,7 +262,9 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8090/docs || curl -fsS http://127.0.0.1:8090/openapi.json || exit 1"]
       <<: *paddlex-health
 
+  # Opt-in: docker compose --profile experimental up … (preferí ENABLE_INFER_TILING)
   paddlex-small-objects:
+    profiles: ["experimental"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-small-objects:local
     container_name: vi-paddlex-small-objects
@@ -270,7 +281,9 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8091/docs || curl -fsS http://127.0.0.1:8091/openapi.json || exit 1"]
       <<: *paddlex-health
 
+  # Opt-in: docker compose --profile experimental up …
   paddlex-anomaly:
+    profiles: ["experimental"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: vision-intelligence/paddlex-anomaly:local
     container_name: vi-paddlex-anomaly
@@ -384,6 +397,21 @@ services:
       - ENABLE_SMALL_OBJECTS=${ENABLE_SMALL_OBJECTS:-false}
       - ENABLE_ANOMALY=${ENABLE_ANOMALY:-false}
       - ENABLE_OPEN_VOCAB=${ENABLE_OPEN_VOCAB:-false}
+      # available = ENABLE_* AND health HTTP de paddlex (TTL 15s).
+      - CAPABILITY_HEALTH_CHECK=${CAPABILITY_HEALTH_CHECK:-true}
+      - PADDLEX_URL=${PADDLEX_URL:-http://paddlex:8080}
+      - PADDLEX_OBJECTS_URL=${PADDLEX_OBJECTS_URL:-http://paddlex-objects:8082}
+      - PADDLEX_OCR_URL=${PADDLEX_OCR_URL:-http://paddlex-ocr:8081}
+      - PADDLEX_FACES_URL=${PADDLEX_FACES_URL:-http://paddlex-faces:8083}
+      - PADDLEX_SCENE_URL=${PADDLEX_SCENE_URL:-http://paddlex-scene:8085}
+      - PADDLEX_POSE_URL=${PADDLEX_POSE_URL:-http://paddlex-pose:8086}
+      - PADDLEX_FACE_ID_URL=${PADDLEX_FACE_ID_URL:-http://paddlex-face-id:8087}
+      - PADDLEX_OPEN_VOCAB_URL=${PADDLEX_OPEN_VOCAB_URL:-http://paddlex-open-vocab:8093}
+      - PADDLEX_SIGNS_OV_URL=${PADDLEX_SIGNS_OV_URL:-http://paddlex-open-vocab:8093}
+      - PADDLEX_SCENE_CLS_URL=${PADDLEX_SCENE_CLS_URL:-http://paddlex-scene-cls:8089}
+      - PADDLEX_INSTANCES_URL=${PADDLEX_INSTANCES_URL:-http://paddlex-instances:8090}
+      - PADDLEX_SMALL_OBJECTS_URL=${PADDLEX_SMALL_OBJECTS_URL:-http://paddlex-small-objects:8091}
+      - PADDLEX_ANOMALY_URL=${PADDLEX_ANOMALY_URL:-http://paddlex-anomaly:8092}
     volumes:
       - ./imagenes_muestra:/media/images
     networks:
@@ -476,8 +504,7 @@ services:
       - PADDLEX_ANOMALY_URL=${PADDLEX_ANOMALY_URL:-http://paddlex-anomaly:8092}
       - ENABLE_OPEN_VOCAB=${ENABLE_OPEN_VOCAB:-false}
       - PADDLEX_OPEN_VOCAB_URL=${PADDLEX_OPEN_VOCAB_URL:-http://paddlex-open-vocab:8093}
-      # Cascada por evidencia: reduce invocaciones (CPU), no RAM ni #procesos.
-      # pedestrians←person; face_id←face; open_vocab←objects vacío/fallo/low.
+      # Cascada: ped←person; face_id←face; open_vocab en oleada 1 (cola larga).
       # faces/pose/signs siguen en oleada 1 (sin trigger) hasta medir recall.
       - ENABLE_EVIDENCE_CASCADE=${ENABLE_EVIDENCE_CASCADE:-true}
       - CASCADE_OBJECT_LOW_SCORE=${CASCADE_OBJECT_LOW_SCORE:-0.35}

@@ -176,7 +176,8 @@ class DecideDependentCapsTests(unittest.TestCase):
         )
         self.assertFalse(d.run_face_id)
 
-    def test_objects_empty_triggers_open_vocab(self) -> None:
+    def test_objects_empty_does_not_queue_open_vocab_in_wave2(self) -> None:
+        """OV está en oleada 1; decide ya no lo encola en wave2."""
         d = decide_dependent_caps(
             config=self._cfg(),
             objects_active=True,
@@ -186,10 +187,10 @@ class DecideDependentCapsTests(unittest.TestCase):
             pedestrians_in_gather=False,
             face_id_in_gather=False,
         )
-        self.assertTrue(d.run_open_vocab)
-        self.assertEqual(d.objects_state, ObjectsEvidenceState.EMPTY)
+        self.assertFalse(d.run_open_vocab)
+        self.assertIn("open_vocab=wave1", d.reasons)
 
-    def test_objects_hits_skip_open_vocab(self) -> None:
+    def test_objects_hits_does_not_queue_open_vocab_in_wave2(self) -> None:
         d = decide_dependent_caps(
             config=self._cfg(),
             objects_active=True,
@@ -201,7 +202,7 @@ class DecideDependentCapsTests(unittest.TestCase):
         )
         self.assertFalse(d.run_open_vocab)
 
-    def test_objects_disabled_does_not_trigger_open_vocab(self) -> None:
+    def test_objects_disabled_does_not_queue_open_vocab_in_wave2(self) -> None:
         d = decide_dependent_caps(
             config=self._cfg(),
             objects_active=False,
@@ -242,7 +243,7 @@ class DecideDependentCapsTests(unittest.TestCase):
         self.assertIn("cascade=disabled", d.reasons)
 
     def test_scores_not_compared_across_models(self) -> None:
-        """Face score alto no cuenta como objects HITS; OV usa solo COCO."""
+        """Face score alto no cuenta como objects HITS; OV ya no va en wave2."""
         d = decide_dependent_caps(
             config=self._cfg(low=0.35),
             objects_active=True,
@@ -253,7 +254,7 @@ class DecideDependentCapsTests(unittest.TestCase):
             face_id_in_gather=True,
         )
         self.assertEqual(d.objects_state, ObjectsEvidenceState.LOW_CONFIDENCE)
-        self.assertTrue(d.run_open_vocab)
+        self.assertFalse(d.run_open_vocab)
         self.assertTrue(d.run_face_id)
 
 
@@ -273,6 +274,9 @@ class WaveSplitTests(unittest.TestCase):
         self.assertIn("vehicles", w1)
         self.assertIn("faces", w1)
         self.assertIn("signs", w1)
+        self.assertIn("open_vocab", w1)
+        self.assertNotIn("pedestrians", w1)
+        self.assertNotIn("face_id", w1)
 
     def test_wave1_keeps_all_when_disabled(self) -> None:
         eligible = {"vehicles", "pedestrians", "open_vocab"}

@@ -22,8 +22,15 @@ ENABLE_OPEN_VOCAB = os.getenv("ENABLE_OPEN_VOCAB", "false").strip().lower() in (
     "true",
     "yes",
 )
-# Ownership: "señal" es exclusiva de la capacidad signs. No incluir "traffic sign".
-OPEN_VOCAB_PROMPT = os.getenv("OPEN_VOCAB_PROMPT", "person,car")
+# Cola larga fuera del piso COCO. Ownership: "señal" es de signs — no incluir
+# "traffic sign" / "stop sign" / "traffic light" (evita duplicar sign/s-* y ov-*).
+_DEFAULT_OPEN_VOCAB_PROMPT = (
+    "helmet,hard hat,safety vest,reflective vest,fire extinguisher,forklift,"
+    "traffic cone,barricade,wheelchair,stroller,crutches,ladder,scaffold,"
+    "generator,pallet,shopping cart,scooter,warning triangle,bollard,"
+    "stapler,wrench,hammer,drill,toolbox,backpack,suitcase,umbrella"
+)
+OPEN_VOCAB_PROMPT = os.getenv("OPEN_VOCAB_PROMPT", _DEFAULT_OPEN_VOCAB_PROMPT)
 # PaddleX pipeline guarda thresholds en self pero no los aplica si el request
 # no manda override (bug upstream). El client siempre envía el dict.
 OPEN_VOCAB_THRESHOLD = float(os.getenv("OPEN_VOCAB_THRESHOLD", "0.05"))
@@ -74,16 +81,20 @@ def normalize_open_vocab_result(data: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 async def infer_open_vocab(
-    client: httpx.AsyncClient, jpeg: bytes
+    client: httpx.AsyncClient,
+    jpeg: bytes,
+    *,
+    prompt: Optional[str] = None,
 ) -> Optional[list[dict[str, Any]]]:
     if not ENABLE_OPEN_VOCAB:
         return None
+    use_prompt = (prompt or "").strip() or OPEN_VOCAB_PROMPT
     url = f"{PADDLEX_OPEN_VOCAB_URL.rstrip('/')}/open-vocabulary-detection"
     try:
         resp = await client.post(
             url,
             json=build_open_vocab_body(
-                jpeg, prompt=OPEN_VOCAB_PROMPT, threshold=OPEN_VOCAB_THRESHOLD
+                jpeg, prompt=use_prompt, threshold=OPEN_VOCAB_THRESHOLD
             ),
             timeout=HTTP_TIMEOUT,
         )

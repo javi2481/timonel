@@ -205,6 +205,41 @@ class EmptyIngestTests(unittest.TestCase):
             finally:
                 ad.MEDIA_DIR = prev
 
+    def test_partial_ingest_does_not_advance_last_ingest(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "images"))
+            prev = ad.MEDIA_DIR
+            ad.MEDIA_DIR = tmp
+            try:
+                with TestClient(ad.app) as client:
+                    client.put("/capabilities", json={"active": {"object": False}})
+                    put = client.put(
+                        "/capabilities",
+                        json={"active": {"object": True}},
+                    )
+                    gen = put.json()["generation"]
+                    before = client.get("/events").json()["last_ingest_generation"]
+
+                    ing = client.post(
+                        "/ingest",
+                        json={
+                            "detections": [],
+                            "trace_id": gen,
+                            "final": False,
+                        },
+                    )
+                    self.assertEqual(ing.status_code, 200)
+                    self.assertFalse(ing.json().get("final", True))
+
+                    events = client.get("/events").json()
+                    self.assertEqual(events["generation"], gen)
+                    self.assertEqual(events["last_ingest_generation"], before)
+                    self.assertNotEqual(
+                        events["generation"], events["last_ingest_generation"]
+                    )
+            finally:
+                ad.MEDIA_DIR = prev
+
 
 if __name__ == "__main__":
     unittest.main()

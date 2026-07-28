@@ -5,12 +5,12 @@ Flujo por foto:
   1. Poll GET /media/current (idle si no hay foto)
   2. cv2.imread
   3. Capacidades del registro (detection.registry); con
-     ENABLE_EVIDENCE_CASCADE: oleada 1 → evidencia → oleada 2
-     (pedestrians / face_id / open_vocab)
+     ENABLE_EVIDENCE_CASCADE: oleada 1 (incl. open_vocab) → evidencia →
+     oleada 2 (pedestrians / face_id); ingest parcial tras oleada 1
   4. merge COCO + attrs→person + extend/append según Cap.merge
   5. OCR de patente opcional sobre top-K vehicles
   6. overlay EN local → POST /preview/frame
-  7. JSON → POST /ingest
+  7. JSON → POST /ingest (final=true)
 
 Con ENABLE_CONTAINER_LIFECYCLE: pause idle de ped/face_id;
 unpause al necesitarlos (oleada 2 o gather legacy).
@@ -27,7 +27,7 @@ import os
 import random
 import time
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 import cv2
 import httpx
@@ -196,8 +196,14 @@ async def infer_capability(
     cap: Capability,
     jpeg: bytes,
     frame_wh: tuple[int, int],
+    *,
+    open_vocab_prompt: Optional[str] = None,
 ) -> Any:
     """Invoca una capacidad; el caller aísla fallos vía retorno None del client."""
+    if cap.name == "open_vocab":
+        from detection.open_vocab import infer_open_vocab
+
+        return await infer_open_vocab(client, jpeg, prompt=open_vocab_prompt)
     if cap.needs_frame_wh:
         return await cap.infer(client, jpeg, frame_wh=frame_wh)
     return await cap.infer(client, jpeg)
@@ -208,14 +214,80 @@ async def gather_capabilities(
     caps: list[Capability],
     jpeg: bytes,
     frame_wh: tuple[int, int],
+    *,
+    open_vocab_prompt: Optional[str] = None,
 ) -> dict[str, Any]:
     """asyncio.gather sobre caps; resultados keyed por name (orden de merge aparte)."""
     if not caps:
         return {}
     gathered = await asyncio.gather(
-        *[infer_capability(client, cap, jpeg, frame_wh) for cap in caps]
+        *[
+            infer_capability(
+                client,
+                cap,
+                jpeg,
+                frame_wh,
+                open_vocab_prompt=open_vocab_prompt,
+            )
+            for cap in caps
+        ]
     )
     return {cap.name: result for cap, result in zip(caps, gathered)}
+
+
+def _scale_cap_results(
+    by_name: dict[str, Any],
+    caps: list[Capability],
+    scale_x: float,
+    scale_y: float,
+) -> None:
+    """Escala in-place resultados extend_scaled / ped attrs (una sola vez)."""
+    for cap in caps:
+        if cap.merge == "extend_scaled":
+            dets = by_name.get(cap.name)
+            if dets:
+                scale_detections(dets, scale_x, scale_y)
+        elif cap.name == "pedestrians":
+            ped = by_name.get("pedestrians")
+            if ped:
+                scale_detections(ped, scale_x, scale_y)
+
+
+def _assemble_detections(
+    *,
+    vehicle_detections: list[dict[str, Any]],
+    object_raw: Any,
+    by_name: dict[str, Any],
+    caps_gather: list[Capability],
+) -> list[dict[str, Any]]:
+    """Merge vehicles/objects + caps extend/append (coords ya en hires; sin plates/NMS)."""
+    if object_raw:
+        object_detections = attach_object_track_ids(object_raw)
+        object_detections = merge_coco_detections(
+            vehicle_detections, object_detections
+        )
+        object_detections = dedupe_same_label_ios(object_detections)
+    else:
+        object_detections = []
+
+    ped_attrs = by_name.get("pedestrians")
+    if ped_attrs:
+        object_detections = merge_person_attributes(object_detections, ped_attrs)
+
+    detections: list[dict[str, Any]] = list(vehicle_detections) + list(
+        object_detections
+    )
+
+    for cap in caps_gather:
+        if cap.merge == "extend_scaled":
+            dets = by_name.get(cap.name)
+            if dets:
+                detections.extend(dets)
+        elif cap.merge == "append_one":
+            one = by_name.get(cap.name)
+            if one is not None:
+                detections.append(one)
+    return detections
 
 
 async def push_preview_frame(client: httpx.AsyncClient, jpeg: bytes) -> None:
@@ -237,6 +309,10 @@ async def run_detections(
     frame_hires,
     *,
     lifecycle: Optional[ContainerLifecycle] = None,
+    open_vocab_prompt: Optional[str] = None,
+    on_partial: Optional[
+        Callable[[list[dict[str, Any]]], Awaitable[None]]
+    ] = None,
 ) -> tuple[Optional[list[dict[str, Any]]], bool, Optional[bytes]]:
     """Orquesta el registro de capacidades + plates + preview.
 
@@ -249,8 +325,9 @@ async def run_detections(
     Con ENABLE_INFER_TILING, vehicles/objects usan slicer sobre hires (sin
     scale_detections). Caps no tileadas escalan en su rama con scale_*.
 
-    Con ENABLE_EVIDENCE_CASCADE: oleada 1 (core + independientes) → evidencia
-    → oleada 2 (pedestrians / face_id / open_vocab). Sin flag: gather único.
+    Con ENABLE_EVIDENCE_CASCADE: oleada 1 (core + open_vocab + …) → evidencia
+    → oleada 2 (pedestrians / face_id). on_partial tras oleada 1 si se pasa.
+    Sin flag: gather único.
 
     Con ENABLE_CONTAINER_LIFECYCLE: unpause ped/face_id antes de invocarlos.
     """
@@ -282,7 +359,11 @@ async def run_detections(
         await lifecycle.ensure_awake(wave1_names)
 
     by_name = await gather_capabilities(
-        client, caps_gather_w1, jpeg, frame_wh
+        client,
+        caps_gather_w1,
+        jpeg,
+        frame_wh,
+        open_vocab_prompt=open_vocab_prompt,
     )
 
     if tiling:
@@ -307,6 +388,21 @@ async def run_detections(
         if object_raw:
             scale_detections(object_raw, scale_x, scale_y)
 
+    _scale_cap_results(by_name, caps_gather_w1, scale_x, scale_y)
+
+    if cascade_cfg.enabled and on_partial is not None:
+        partial = _assemble_detections(
+            vehicle_detections=vehicle_detections,
+            object_raw=object_raw,
+            by_name=by_name,
+            caps_gather=caps_gather_w1,
+        )
+        partial = apply_cross_cap_nms(partial)
+        try:
+            await on_partial(partial)
+        except Exception as exc:
+            logger.warning("Partial ingest failed: %s", exc)
+
     if cascade_cfg.enabled:
         decision = decide_dependent_caps(
             config=cascade_cfg,
@@ -329,43 +425,27 @@ async def run_detections(
             woken = await lifecycle.ensure_awake(dep_names)
             if woken:
                 logger.info("lifecycle wake wave2=%s", sorted(woken))
-        wave2 = await gather_capabilities(client, caps_wave2, jpeg, frame_wh)
+        wave2 = await gather_capabilities(
+            client,
+            caps_wave2,
+            jpeg,
+            frame_wh,
+            open_vocab_prompt=open_vocab_prompt,
+        )
         by_name.update(wave2)
+        _scale_cap_results(by_name, caps_wave2, scale_x, scale_y)
     else:
         logger.debug("cascade disabled; single gather")
 
     # Merge loop: all non-tiled eligible caps (incl. wave2 dependents).
     caps_gather = [c for c in caps if c.name not in tiled_names]
 
-    if object_raw:
-        object_detections = attach_object_track_ids(object_raw)
-        object_detections = merge_coco_detections(
-            vehicle_detections, object_detections
-        )
-        # Misma clase COCO anidada (bed⊂bed): IoU-NMS no alcanza; IoS sí.
-        object_detections = dedupe_same_label_ios(object_detections)
-    else:
-        object_detections = []
-
-    ped_attrs = by_name.get("pedestrians")
-    if ped_attrs:
-        scale_detections(ped_attrs, scale_x, scale_y)
-        object_detections = merge_person_attributes(object_detections, ped_attrs)
-
-    detections: list[dict[str, Any]] = list(vehicle_detections) + list(
-        object_detections
+    detections = _assemble_detections(
+        vehicle_detections=vehicle_detections,
+        object_raw=object_raw,
+        by_name=by_name,
+        caps_gather=caps_gather,
     )
-
-    for cap in caps_gather:
-        if cap.merge == "extend_scaled":
-            dets = by_name.get(cap.name)
-            if dets:
-                scale_detections(dets, scale_x, scale_y)
-                detections.extend(dets)
-        elif cap.merge == "append_one":
-            one = by_name.get(cap.name)
-            if one is not None:
-                detections.append(one)
 
     # Plate OCR remains ENABLE-only enrich (unchanged); not SPA-gated.
     await enrich_vehicles_with_plates(
@@ -392,6 +472,7 @@ async def run_image_source(
     generation: Any = None,
     *,
     lifecycle: Optional[ContainerLifecycle] = None,
+    open_vocab_prompt: Optional[str] = None,
 ) -> None:
     """Single-shot sobre una foto: infer + heartbeat preview hasta clear/cambio."""
     reset_all_trackers()
@@ -400,15 +481,37 @@ async def run_image_source(
     if frame_hires is None:
         raise RuntimeError(f"Cannot read image source: {path}")
 
+    async def _partial_ingest(dets: list[dict[str, Any]]) -> None:
+        await post_json(
+            client,
+            ADAPTER_INGEST_URL,
+            {
+                "detections": dets,
+                "trace_id": generation,
+                "final": False,
+            },
+        )
+        logger.info(
+            "Partial ingest (wave1): %s detections=%d", path, len(dets)
+        )
+
     detections, _degraded, preview_jpeg = await run_detections(
-        client, frame_hires, lifecycle=lifecycle
+        client,
+        frame_hires,
+        lifecycle=lifecycle,
+        open_vocab_prompt=open_vocab_prompt,
+        on_partial=_partial_ingest,
     )
     detections = detections or []
-    # Always ingest (including []) so last_ingest_generation advances.
+    # Always ingest final (including []) so last_ingest_generation advances.
     await post_json(
         client,
         ADAPTER_INGEST_URL,
-        {"detections": detections, "trace_id": generation},
+        {
+            "detections": detections,
+            "trace_id": generation,
+            "final": True,
+        },
     )
 
     if preview_jpeg is not None:
@@ -510,6 +613,9 @@ async def run_loop() -> None:
                         selected.get("name") if selected else None,
                         selected.get("generation") if selected else None,
                         lifecycle=lifecycle if lifecycle.enabled else None,
+                        open_vocab_prompt=(
+                            selected.get("open_vocab_prompt") if selected else None
+                        ),
                     )
                 except asyncio.CancelledError:
                     raise

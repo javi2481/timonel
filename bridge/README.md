@@ -18,16 +18,20 @@ idle ←→ poll /media/current
        idle
 ```
 
-Con `ENABLE_EVIDENCE_CASCADE=true` (default en compose) las dependencias
-seguras (`pedestrians`, `face_id`, `open_vocab`) solo se invocan si hay
-evidencia. `faces` / `pose` / `signs` / scene / experimental siguen en
-oleada 1 (medición: no condicionar faces/signs). `false` = gather único.
+Con `ENABLE_EVIDENCE_CASCADE=true` (default en compose):
+- `pedestrians` / `face_id` solo tras evidencia (person / face) en oleada 2.
+- `open_vocab` corre en **oleada 1** (cola larga, en paralelo con objects).
+  NMS posterior dedupea vehicle/object/open_vocab (preferencia
+  vehicle > object > ov).
+- `faces` / `pose` / `signs` / scene siguen en oleada 1.
+`false` = gather único.
 
-Esto reduce **invocaciones/CPU**. Con `ENABLE_CONTAINER_LIFECYCLE=true`
-(opt-in) el bridge también hace `docker pause` de `pedestrians` /
-`face_id` tras idle y `unpause` al disparar oleada 2. No libera RAM
-(`pause` congela CPU). `open_vocab` no se pausa: comparte contenedor con
-`signs` (oleada 1). Requiere montar el Docker sock en el servicio bridge.
+Esto reduce **invocaciones/CPU** en ped/face_id. Con
+`ENABLE_CONTAINER_LIFECYCLE=true` (opt-in) el bridge también hace
+`docker pause` de `pedestrians` / `face_id` tras idle y `unpause` al
+disparar oleada 2. No libera RAM (`pause` congela CPU). `open_vocab` no se
+pausa: comparte contenedor con `signs`. Requiere montar el
+Docker sock en el servicio bridge.
 
 `DEMO_MODE=1` emite detecciones sintéticas sin PaddleX.
 

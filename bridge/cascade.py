@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Iterable, Optional
 
-# Capacidades que en MVP se ejecutan solo tras evidencia (2ª oleada).
-DEPENDENT_CAP_NAMES: frozenset[str] = frozenset(
-    {"pedestrians", "face_id", "open_vocab"}
-)
+# Capacidades que en MVP se ejecutan en 2ª oleada tras oleada 1.
+# pedestrians/face_id: gated por evidencia. open_vocab corre en oleada 1
+# (cola larga en paralelo con objects).
+DEPENDENT_CAP_NAMES: frozenset[str] = frozenset({"pedestrians", "face_id"})
 
 # Independientes: corren en 1ª oleada si SPA-active (o vehicles siempre).
 # faces/pose/signs/etc. NO se condicionan aún (estrategia conservadora).
@@ -196,13 +196,11 @@ def decide_dependent_caps(
     else:
         reasons.append("face_id=inactive")
 
+    # Cola larga: OV corre siempre que esté available (no solo si COCO falló).
     run_ov = False
     if open_vocab_in_gather:
-        if needs_open_vocab_second_opinion(state):
-            run_ov = True
-            reasons.append(f"open_vocab=second_opinion:{state.value}")
-        else:
-            reasons.append(f"open_vocab=skip:{state.value}")
+        # OV corre en oleada 1 (DEPENDENT_CAP_NAMES); no re-disparar en wave2.
+        reasons.append("open_vocab=wave1")
     else:
         reasons.append("open_vocab=inactive")
 

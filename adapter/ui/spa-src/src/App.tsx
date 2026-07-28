@@ -75,7 +75,7 @@ export function App() {
         <UploadBar
           status={state.status}
           errorMessage={state.errorMessage}
-          onUpload={(file) => void upload(file)}
+          onUpload={(file, prompt) => void upload(file, prompt)}
           onClear={() => void clear()}
           onRetry={retry}
         />

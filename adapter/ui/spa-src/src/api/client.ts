@@ -14,6 +14,7 @@ export interface CurrentMediaResponse {
   name: string | null;
   type: string | null;
   generation: number;
+  open_vocab_prompt?: string | null;
 }
 
 export interface UploadResponse {
@@ -61,9 +62,16 @@ async function asJson<T>(res: Response): Promise<T> {
   return body;
 }
 
-export async function uploadMedia(file: File): Promise<UploadResponse> {
+export async function uploadMedia(
+  file: File,
+  options?: { openVocabPrompt?: string | null },
+): Promise<UploadResponse> {
   const form = new FormData();
   form.append("file", file);
+  const prompt = options?.openVocabPrompt?.trim();
+  if (prompt) {
+    form.append("open_vocab_prompt", prompt);
+  }
   const res = await fetch("/media/upload", { method: "POST", body: form });
   return asJson<UploadResponse>(res);
 }

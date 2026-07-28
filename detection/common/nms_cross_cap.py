@@ -5,6 +5,10 @@ InferenceSlicer (car vs truck, etc.).
 
 Capa B (este módulo, ``class_id_for_cross_cap_nms``): NMS **cross-cap** por
 ``entity_type`` (vehicle vs face vs object…). Nunca reutilizar el mapa de A.
+
+Tras NMS-B: dedupe espacial entre ``vehicle`` / ``object`` / ``open_vocab``
+(mismo objeto emitido por COCO y YOLO-World). Preferencia:
+vehicle > object > open_vocab.
 """
 
 from __future__ import annotations
@@ -20,6 +24,17 @@ logger = logging.getLogger("detection.nms_cross_cap")
 
 # IoU threshold — mismo default que supervision Detections.with_nms / slicer.
 CROSS_CAP_NMS_THRESHOLD = float(os.getenv("CROSS_CAP_NMS_THRESHOLD", "0.5"))
+
+# Modalidades de caja que compiten por el mismo objeto físico.
+_SPATIAL_DEDUP_ENTITY_TYPES: frozenset[str] = frozenset(
+    {"vehicle", "object", "open_vocab"}
+)
+# Menor = más prioritario al survivor.
+_SPATIAL_DEDUP_PRIORITY: dict[str, int] = {
+    "vehicle": 0,
+    "object": 1,
+    "open_vocab": 2,
+}
 
 # Mapa entity_type → id **solo** para NMS-B. Independiente de _TILE_CLASS_IDS.
 _CROSS_CAP_CLASS_IDS: dict[str, int] = {}
@@ -57,6 +72,87 @@ def reset_cross_cap_class_ids() -> None:
 def _has_bbox(det: dict[str, Any]) -> bool:
     bbox = det.get("bbox")
     return isinstance(bbox, (list, tuple)) and len(bbox) >= 4
+
+
+def _entity_type(det: dict[str, Any]) -> str:
+    return str(det.get("entity_type") or "vehicle").strip().lower() or "vehicle"
+
+
+def _bbox_xyxy(det: dict[str, Any]) -> tuple[float, float, float, float]:
+    b = det["bbox"]
+    return float(b[0]), float(b[1]), float(b[2]), float(b[3])
+
+
+def _iou_xyxy(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+) -> float:
+    ax1, ay1, ax2, ay2 = a
+    bx1, by1, bx2, by2 = b
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw, ih = max(0.0, ix2 - ix1), max(0.0, iy2 - iy1)
+    inter = iw * ih
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = area_a + area_b - inter
+    if union <= 0.0:
+        return 0.0
+    return inter / union
+
+
+def _safe_score(det: dict[str, Any]) -> float:
+    raw = det.get("score", det.get("conf", det.get("confidence")))
+    try:
+        return float(raw) if raw is not None else 0.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def dedupe_spatial_modality_caps(
+    detections: list[dict[str, Any]],
+    *,
+    threshold: Optional[float] = None,
+) -> list[dict[str, Any]]:
+    """Dedupe IoU entre vehicle / object / open_vocab.
+
+    Preferencia del survivor: vehicle > object > open_vocab; empate → mayor score.
+    Otras entity_types pasan intactas.
+    """
+    thr = CROSS_CAP_NMS_THRESHOLD if threshold is None else float(threshold)
+    competing: list[dict[str, Any]] = []
+    others: list[dict[str, Any]] = []
+    for det in detections:
+        if _has_bbox(det) and _entity_type(det) in _SPATIAL_DEDUP_ENTITY_TYPES:
+            competing.append(det)
+        else:
+            others.append(det)
+
+    if len(competing) <= 1:
+        return others + competing
+
+    ordered = sorted(
+        competing,
+        key=lambda d: (
+            _SPATIAL_DEDUP_PRIORITY.get(_entity_type(d), 99),
+            -_safe_score(d),
+        ),
+    )
+    kept: list[dict[str, Any]] = []
+    suppressed = [False] * len(ordered)
+    for i, det in enumerate(ordered):
+        if suppressed[i]:
+            continue
+        kept.append(det)
+        box_i = _bbox_xyxy(det)
+        for j in range(i + 1, len(ordered)):
+            if suppressed[j]:
+                continue
+            if _iou_xyxy(box_i, _bbox_xyxy(ordered[j])) >= thr:
+                suppressed[j] = True
+    return others + kept
 
 
 def _row_to_data_fields(det: dict[str, Any]) -> dict[str, Any]:
@@ -177,10 +273,10 @@ def apply_cross_cap_nms(
     *,
     threshold: Optional[float] = None,
 ) -> list[dict[str, Any]]:
-    """NMS-B: IOU, class_agnostic=False; excluye append_one sin bbox.
+    """NMS-B por entity_type + dedupe espacial vehicle/object/open_vocab.
 
-    Survivor = mayor score (comportamiento de ``with_nms``). Extras
-    (track_id, plate, …) solo del survivor.
+    Survivor NMS-B = mayor score (``with_nms``). Extras (track_id, plate, …)
+    solo del survivor. Luego preferencia vehicle > object > open_vocab.
     """
     thr = CROSS_CAP_NMS_THRESHOLD if threshold is None else float(threshold)
     with_bbox: list[dict[str, Any]] = []
@@ -204,4 +300,5 @@ def apply_cross_cap_nms(
         overlap_metric=sv.OverlapMetric.IOU,
     )
     survivors = detections_to_vi_dets(kept)
+    survivors = dedupe_spatial_modality_caps(survivors, threshold=thr)
     return without_bbox + survivors

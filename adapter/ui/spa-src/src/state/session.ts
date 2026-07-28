@@ -158,10 +158,11 @@ export function useSession() {
   }, []);
 
   const upload = useCallback(
-    async (file: File) => {
+    async (file: File, openVocabPrompt?: string | null) => {
       setState((prev) => ({ ...prev, status: "uploading", errorMessage: null }));
+      processingSinceRef.current = Date.now();
       try {
-        const res = await uploadMedia(file);
+        const res = await uploadMedia(file, { openVocabPrompt });
         if (!res.ok || res.generation === undefined) {
           setState((prev) => ({
             ...prev,
