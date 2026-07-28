@@ -160,7 +160,7 @@ class TestRunDetectionsLifecycleHook(unittest.IsolatedAsyncioTestCase):
         async def fake_fetch(_client):
             return {"vehicles", "objects", "faces", "pedestrians", "face_id"}
 
-        async def fake_gather(client, caps, jpeg, frame_wh):
+        async def fake_gather(client, caps, jpeg, frame_wh, open_vocab_prompt=None):
             out = {}
             for c in caps:
                 if c.name == "vehicles":
