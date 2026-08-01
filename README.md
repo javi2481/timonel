@@ -6,6 +6,10 @@ qué aporta.
 
 > Orquestar, no inventar.
 
+![Panel de Timonel](assets/panel.png)
+
+<p align="center"><sub>Varias capacidades PaddleX orquestadas sobre una sola foto: objetos, caras y pose unificados en un flujo de eventos.</sub></p>
+
 ## Prerrequisitos
 
 - Docker Desktop / Engine + Compose v2
