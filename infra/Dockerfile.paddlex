@@ -1,0 +1,61 @@
+# syntax=docker/dockerfile:1
+# PaddleX 3.x: pipeline oficial vehicle_attribute_recognition
+# (PP-Vehicle era de PaddleDetection; no existe en PaddleX 3).
+# GPU: BASE_IMAGE=paddlepaddle/paddle:2.6.1-gpu-cuda11.2-cudnn8
+
+ARG BASE_IMAGE=paddlepaddle/paddle:3.0.0
+FROM ${BASE_IMAGE}
+
+ARG DEVICE=cpu
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    TIMONEL_DEVICE=${DEVICE}
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libgl1 \
+        libglib2.0-0 \
+        curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# ocr: requerido por el pipeline `OCR` (servicio paddlex-ocr); cv/serving
+# siguen cubriendo vehicle_attribute_recognition (servicio paddlex).
+# multimodal: solo necesario para open_vocabulary_* (servicio paddlex-open-vocab).
+#
+# Versión pineada (sin fallbacks `||`): reproducibilidad build-a-build.
+# 3.7.2 es la versión sobre la que se detectó y documentó el incidente
+# OCRv6/PIR (ver nota más abajo sobre ocr_v5_mobile.yaml) — bumpear el pin
+# requiere repetir ese chequeo de compatibilidad antes de aceptar la nueva
+# versión (ver infra/README.md § Upgrade de paddlex).
+ARG PADDLEX_EXTRAS=cv,serving,ocr
+RUN pip install --no-cache-dir "paddlex[${PADDLEX_EXTRAS}]==3.7.2"
+
+COPY infra/entrypoint.paddlex.sh /entrypoint.paddlex.sh
+RUN chmod +x /entrypoint.paddlex.sh
+
+# Pipeline OCR pineado a PP-OCRv5 (mobile): PP-OCRv6 (default de paddlex 3.7.2)
+# no es compatible con el motor de inferencia de esta imagen base (PIR
+# mismatch). Solo lo usa el servicio paddlex-ocr via TIMONEL_PIPELINE; el servicio
+# paddlex (attr) no lo referencia y sigue con vehicle_attribute_recognition.
+COPY detection/plates/pipeline.yaml /opt/paddlex/pipelines/ocr_v5_mobile.yaml
+COPY detection/scene/pipeline_lane.yaml /opt/paddlex/pipelines/scene_lane.yaml
+COPY detection/scene/pipeline_bdd_marks.yaml /opt/paddlex/pipelines/scene_bdd_marks.yaml
+COPY detection/faces/pipeline.yaml /opt/paddlex/pipelines/face_detection.yaml
+# PaddleX 3.7.2 serving bug: class_ids shape (1,K) → 500 on /image-classification.
+COPY infra/patches/paddlex_image_classification.py \
+  /usr/local/lib/python3.10/dist-packages/paddlex/inference/serving/basic_serving/_pipeline_apps/image_classification.py
+# PaddleX 3.7.2 FaissBuilder: face features (N,1,D) → ValueError unpack in index-build.
+COPY infra/patches/paddlex_faisser.py \
+  /usr/local/lib/python3.10/dist-packages/paddlex/inference/pipelines/components/faisser.py
+# open_vocab CPU: YOLO-Worldv2-L (GroundingDINO-T reshape 500 en paddle 3.0.0 CPU).
+COPY detection/open_vocab/pipeline.yaml /opt/paddlex/pipelines/open_vocab_yoloworld.yaml
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=300s --retries=10 \
+  CMD curl -fsS http://127.0.0.1:8080/docs >/dev/null || curl -fsS http://127.0.0.1:8080/openapi.json >/dev/null || exit 1
+
+# TIMONEL_DEVICE (via ARG DEVICE): cpu por defecto, gpu en el perfil paddlex-gpu.
+# exec en el entrypoint mantiene paddlex como PID1 (SIGTERM/stop limpios).
+ENTRYPOINT ["/entrypoint.paddlex.sh"]

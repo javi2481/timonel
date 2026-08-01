@@ -1,0 +1,199 @@
+# Plan: medición → InferenceSlicer → NMS/zonas (3 PRs)
+
+## Fuentes de verdad (APIs, no inventar)
+
+- [InferenceSlicer](https://supervision.roboflow.com/latest/detection/tools/inference_slicer/) — `slice_wh` / `overlap_wh` px; `thread_workers` default 1; callback sync → `Detections`; merge + `with_nms(threshold, overlap_metric)` **sin** `class_agnostic` → default `False` → **exige `class_id` + `confidence`**. `move_detections` deja cajas en **coords del frame completo** (hires si el slicer corre sobre hires).
+- [Detections.with_nms](https://supervision.roboflow.com/latest/detection/core/) — `class_agnostic=False` por defecto; `overlap_metric` IOU|IOS (**nunca IOS** en VI).
+- [PolygonZone](https://supervision.roboflow.com/latest/detection/tools/polygon_zone/) — `polygon` **(N,2) px absolutos**; mask dimensionada por **extent del polígono** (`x_max+2, y_max+2`), no por el frame; `trigger` usa anchors de `xyxy` (default `BOTTOM_CENTER`). Foto one-shot: **no** ByteTrack.
+- **No usar** `denormalize_boxes` para polígonos: esa API espera **xyxy**, no `(N,2)`. Denorm de zona = **`pts * [w, h]`** únicamente.
+- OpenCV: bridge pinnea `opencv-python-headless==4.10.0.84`. `supervision==0.28.0` declara **`opencv-python>=4.5.5.64`** (no headless) — conflicto real; resolver en PR2 antes del merge (ver abajo).
+- CLAHE/deskew **fuera** de estos PRs.
+
+## Principio
+
+Cada PR es reversible y medible. CLAHE y deskew **no entran**. Dos capas de NMS (A tile / B cross-cap) y **dos mapas de `class_id`** documentados por separado.
+
+```mermaid
+flowchart LR
+  pr1[PR1 baseline at 960]
+  pr2[PR2 slicer plus width 1920]
+  pr3[PR3 NMS-B plus zones]
+  pr1 --> pr2 --> pr3
+```
+
+---
+
+## PR1 — Medición + wording (cero cambio del **código** de inferencia)
+
+**Objetivo:** baseline atribuible al estado **actual** (`BRIDGE_MAX_WIDTH` default **960**) y el número que fija `slice_wh` en PR2. El path de inferencia del bridge **no** cambia.
+
+### Decisiones fijadas
+- **No** subir `BRIDGE_MAX_WIDTH` en PR1. El default sigue **960** en [`detection/common/geometry.py`](detection/common/geometry.py), [`.env.example`](.env.example), [`docker-compose.yml`](docker-compose.yml). PR1 solo reescribe el **comentario** que explica el 960 (foto one-shot / OOM opcional), no el número. Prohibido “aprovechar” el wording para meter 1920.
+- Wording “CPU saturada / 640” → foto one-shot + OOM opcional en [`.env.example`](.env.example) e [`infra/README.md`](infra/README.md). Las negaciones útiles (“No abre RTSP…”) en [`bridge/main.py`](bridge/main.py) / [`bridge/README.md`](bridge/README.md) **se quedan**.
+- `BRIDGE_FPS` / `DEMO_MODE` se mantienen.
+- Baseline de medición = **960**, sin excepción (atribuible para PR2).
+
+### Medición (obligatoria)
+1. **Input efectivo PaddleX (vehicles + objects):** medir tamaño del JPEG tras `maybe_resize_for_infer` y, si la respuesta expone imagen, el tamaño decodificado (hipótesis ~640 interna — **no asumir**). Resultado = candidato **`INFER_SLICE_WH`**.
+2. **Histograma de anchos de bbox** sobre GT `--packs core`.
+3. **Harness bridge-side:** `--via-bridge-preprocess` con el resize actual del bridge (sin tiles). Cableado para que PR2 enchufe el mismo núcleo sync.
+4. **Contador en `parse_plate`:** totales / rechazados regex / aceptados.
+
+### Exit criteria PR1
+Baseline Core (direct + via-bridge-resize a **960**); `INFER_SLICE_WH` propuesto; wording limpio; **default sigue 960**.
+
+---
+
+## PR2 — `sv.InferenceSlicer` + invariante de coordenadas + default 1920
+
+**Objetivo:** resolución efectiva constante por tile en vehicles/objects, medible vs baseline PR1 (960), sin OOM ni doble escalado.
+
+### Default de ancho (aquí, no en PR1)
+- `BRIDGE_MAX_WIDTH` default **960 → 1920** en geometry / `.env.example` / compose.
+- Con slicer, el ancho del bridge **deja de gobernar** la resolución de detección tileada (pasa a `INFER_SLICE_WH`). `BRIDGE_MAX_WIDTH` queda para caps **no** tileadas. El costo RAM de 8 GB se evalúa **junto** al tiling.
+
+### Invariante de coordenadas (obligatorio — bug silencioso si falta)
+Hoy [`bridge/main.py`](bridge/main.py) `run_detections` escala vehicles/objects (y peats/`extend_scaled`) tras el gather. El slicer ya devuelve **hires** vía `move_detections`. Si esas `scale_detections` quedan sobre cajas tileadas, los boxes se **inflan** otra vez: no crashea; `merge_coco_detections` deja de dedupear (IoU nunca > 0.5 → cada auto dos veces); `merge_person_attributes` falla en silencio.
+
+**Regla:** cada capacidad entrega cajas en **coords hires antes de salir de su rama**.
+- Tileada (vehicles/objects con slicer): el slicer ya trasladó → **no** re-escalar.
+- No tileada: su rama aplica `scale_detections` con el `scale_*` de `maybe_resize_for_infer` → luego sale en hires.
+- `run_detections` **deja de escalar de forma global**. Los merges solo ven hires.
+
+**Test anti-regresión:** mismo fixture con tiling on y off; boxes de vehicles dentro de tolerancia chica (detecta doble escalado).
+
+### Núcleo sync compartido (no wrapper async)
+Unidad compartida bridge ↔ harness:
+
+```text
+infer_tiled_sync(frame_hires, base_url, predict_path, *, slice_wh, overlap_wh, ...) -> list[dict]
+```
+
+- Contiene: `InferenceSlicer` + callback con `httpx.Client` sync + conversión a dicts VI (aún **sin** `track_id` string; eso post-slicer).
+- **`asyncio.to_thread` solo en** [`bridge/main.py`](bridge/main.py).
+- Harness host-side **llama el sync directo** — no duplicar slicer en `scripts/`, no meter asyncio en el harness.
+
+### Por qué no tiler a mano
+Usar `sv.InferenceSlicer`. Dep `supervision==0.28.0` (o 0.28.x pinneada) en [`bridge/requirements.txt`](bridge/requirements.txt) **desde PR2**.
+
+### Conflicto OpenCV (bloqueante de merge PR2)
+`supervision 0.28.0` → `requires_dist: opencv-python>=4.5.5.64`. Bridge → `opencv-python-headless==4.10.0.84`.
+
+Antes de merge: `pip install --dry-run` (o resolve en imagen bridge) y **dejar solo headless** (constraint/`opencv-python` → headless, o reinstall forzado documentado). No descubrirlo en el build de Docker Desktop.
+
+### Parametrización
+| Env | Significado |
+|-----|-------------|
+| `INFER_SLICE_WH` | Tile en px; default = medido en PR1 |
+| `INFER_OVERLAP_WH` | Solape en px (`< slice_wh`); default **100** = supervision 0.28 |
+| `ENABLE_INFER_TILING` | Feature flag |
+| `INFER_TILE_THREAD_WORKERS` | Default **1** |
+
+Slicer sobre **frame_hires**. Caps no tileadas: JPEG `frame_infer` + scale en su rama.
+
+### `class_id` capa A — nombre explícito
+Función **`class_id_for_tile_nms(...)`** (mapa label→id **dentro de la capacidad**). Solo para el NMS interno del slicer. **No** reutilizar en PR3.
+
+### NMS capa A
+`overlap_filter=NON_MAX_SUPPRESSION`, `overlap_metric=IOU`, `thread_workers=1`
+(defaults de [InferenceSlicer 0.28](https://supervision.roboflow.com/0.28.0/detection/tools/inference_slicer/)).
+Implementado en [`detection/common/tiled_infer.py`](detection/common/tiled_infer.py)
+(`infer_tiled_sync` + `class_id_for_tile_nms`).
+
+**Capa A vs B:** A = NMS **intra-capacidad** dentro del slicer (`class_id_for_tile_nms`
+por label de vehicles u objects). B (PR3) = NMS **cross-cap** tras remapear con
+`class_id_for_cross_cap_nms` por `entity_type`. No reutilizar el mapa de A en B.
+
+### Fuentes stack oficiales (PR2)
+- **supervision 0.28 InferenceSlicer:** `slice_wh` default 640, `overlap_wh` default **100**,
+  `thread_workers` default 1, `iou_threshold` 0.5, `overlap_metric` IOU.
+  Tras cada tile, `_run_callback` llama `move_detections(offset)` → cajas en coords del
+  frame completo ([docs 0.28](https://supervision.roboflow.com/0.28.0/detection/tools/inference_slicer/);
+  FAQ overlap [detect small objects](https://supervision.roboflow.com/latest/how_to/detect_small_objects/)).
+  `with_nms` con `class_agnostic=False` exige `class_id` + `confidence`
+  ([Detections.with_nms](https://supervision.roboflow.com/latest/detection/core/)).
+- **httpx:** `Client` “can be shared between threads” (docstring sync Client); VI usa
+  `thread_workers=1` por default del slicer.
+- **PaddleX serving (oficial):**
+  - OD: `POST /object-detection`, body `image` (URL o Base64); result
+    `detectedObjects[]` con `bbox` xyxy + `categoryName`
+    ([object detection](https://paddlepaddle.github.io/PaddleX/latest/en/pipeline_usage/tutorials/cv_pipelines/object_detection.html)).
+  - Vehicles: `POST /vehicle-attribute-recognition`, body `image`; result
+    `vehicles[]` con `bbox` xyxy + atributos
+    ([vehicle attribute](https://paddlepaddle.github.io/PaddleX/latest/en/pipeline_usage/tutorials/cv_pipelines/vehicle_attribute_recognition.html)).
+  - **No documentado** en esas páginas: resize/preprocess interno ni tamaño de tensor
+    del serving. No afirmar un input size interno; `INFER_SLICE_WH` viene de la
+    medición JPEG del bridge (PR1), no de docs PaddleX.
+
+### Exit criteria PR2
+Core bridge-tiles ≥ baseline PR1 (960); test tiling on/off OK; dry-run deps sin `opencv-python` GUI duplicado; harness usa sync core; doc NMS-A; default ancho 1920.
+
+**Smoke 2026-07-24 (vehicles Core):** tiled `bbox_match_rate` **0.358** = `--via-bridge-preprocess` **0.358** (direct bytes 0.4691). Ver [`pr2-tiling-smoke-vehicles.md`](pr2-tiling-smoke-vehicles.md). Flag tiling sigue en `false` por default.
+
+---
+
+## PR3 — NMS cross-cap (capa B) + zonas
+
+### Dos espacios de `class_id` (no reusar el de PR2)
+- **`class_id_for_tile_nms`** (PR2): numeración intra-capacidad (car vs truck, etc.).
+- **`class_id_for_cross_cap_nms`**: mapa de **`entity_type`** (vehicle vs face vs object…).
+
+Antes del NMS-B: **remapear** siempre con `class_id_for_cross_cap_nms`. Si se reusa el de PR2, la capa B compara taxonomía COCO en vez de entidad y el resultado es “plausible pero incorrecto”.
+
+### NMS-B — resto
+- `class_agnostic=False`; **`overlap_metric=IOU`** (nunca IOS).
+- Excluir `append_one` sin bbox.
+- `track_id` string VI en **`data`**, no en `tracker_id` numérico.
+- Normalizar keys de `data` antes de `Detections.merge`.
+- Survivor = mayor score; extras solo del survivor.
+- Doc capa A vs B.
+
+### Zonas
+- Config [0,1]; runtime **`pts * [w, h]`** → `PolygonZone(polygon=abs int64)`. **Prohibido** `denormalize_boxes` para polígonos.
+- `trigger` sin ByteTrack.
+- Tag `zones` → timonel **opcional aditivo**; **`SCHEMA_VERSION` permanece `"1.0"`** (backward-compatible: cliente viejo ignora `zones`). Bump solo si rules-sink **exige** presencia de `zones`.
+- `gen_timonel_types` + rules `zone:no_parking`.
+- Preview: contorno (`PolygonZoneAnnotator` / `draw_polygon`).
+
+### Tests PR3
+- face+person sobreviven; objects duplicados se dedupean; survivor conserva `track_id`/`plate` en `data`.
+- Keys `data` heterogéneas tras normalizar.
+- Zona hit/miss en dos tamaños de frame.
+- **Anchor fuera del extent del polígono → miss** (mask no cubre el frame; clipping no debe dar falso positivo).
+- Remap: NMS-B usa `class_id_for_cross_cap_nms`, no el class_id de tile.
+
+### Exit criteria PR3
+NMS-B no borra anidados; zones bridge → contrato → rules; tipos TS regenerados; tests de extent + remap verdes.
+
+### Estado merge (2026-07-25)
+- **Merged:** PR1 [#19](https://github.com/javi2481/timonel/pull/19), PR2 [#20](https://github.com/javi2481/timonel/pull/20), PR3 [#21](https://github.com/javi2481/timonel/pull/21) → `master` tip **`d569a76`**.
+- **SCHEMA_VERSION** sigue **`"1.0"`** (`zones` aditivo).
+- **Smoke zonas:** [`pr3-zones-smoke.md`](pr3-zones-smoke.md) — tag `zones` en `/events` + alerta `zone:no_parking` en rules-sink (requiere imagen rules-sink con `rules.app:app`).
+- Compose: bridge recibe `TIMONEL_ZONES_JSON` / `CROSS_CAP_NMS_THRESHOLD`.
+
+---
+
+## Medición hires multi-tile (post-PR3) → flag tiling
+
+Ver [`hires-tiling-measure.md`](hires-tiling-measure.md).
+
+| Señal | Número |
+|-------|--------|
+| PR2 native tiled = bridge-preprocess | **0.358** (pack ≤640, casi 1 tile) |
+| Pad@1920 bridge-preprocess (n=5) | **0.20** bbox_match / ~4.6 s |
+| Pad@1920 tiled (n=5, 8–20 tiles) | **0.24** bbox_match / ~51.8 s |
+
+**Decisión:** `ENABLE_INFER_TILING` **sigue `false`**. Ganancia de match despreciable y latencia ~11×; no hay pack hires nativo.
+
+---
+
+## Fuera de estos tres PRs
+- CLAHE; deskew; borrar small_objects; tiling extended; UI polígonos; `run_coroutine_threadsafe`.
+- Activar `ENABLE_INFER_TILING=true` por default (pendiente pack hires real).
+
+---
+
+## Orden de merge
+1. PR1 → baseline a **960** + `INFER_SLICE_WH` propuesto (sin cambiar default de ancho). ✅
+2. PR2 → sync core + invariante hires + deps OpenCV + default **1920** + harness tiles. ✅
+3. PR3 → remap class_id + NMS-B + zonas (SCHEMA 1.0 aditivo). ✅

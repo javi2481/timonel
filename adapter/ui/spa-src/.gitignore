@@ -1,0 +1,5 @@
+node_modules/
+dist/
+src/types/timonel.gen.ts
+.vite/
+*.tsbuildinfo

@@ -1,0 +1,350 @@
+"""Test standalone para adapter.timonel (contrato PerceptionEvent).
+
+Ejecutar desde la raíz del repo:
+
+    PYTHONPATH=. python3 tests/test_timonel.py
+"""
+
+import unittest
+
+from adapter.timonel import (
+    FacePayload,
+    GenericPayload,
+    IdentityPayload,
+    ObjectPayload,
+    PerceptionEvent,
+    PosePayload,
+    ScenePayload,
+    TextPayload,
+    VehiclePayload,
+    _normalize_detection,
+)
+
+
+class NormalizeDetectionEntityTypeTests(unittest.TestCase):
+    def test_defaults_to_vehicle_when_missing(self) -> None:
+        normalized = _normalize_detection({"track_id": "1", "label": "car", "score": 0.9})
+        self.assertEqual(normalized["entity_type"], "vehicle")
+
+    def test_passes_through_object_entity_type(self) -> None:
+        normalized = _normalize_detection(
+            {"track_id": "o-1", "label": "person", "score": 0.8, "entity_type": "object"}
+        )
+        self.assertEqual(normalized["entity_type"], "object")
+
+
+class ConsolidateAndEmitVehicleRegressionTests(unittest.TestCase):
+    """Comportamiento de vehicle_type/color/plate_text sin cambios (regresión)."""
+
+    def test_vehicle_track_votes_color_type_plate(self) -> None:
+        detections = [
+            {
+                "track_id": "v-1",
+                "label": "sedan",
+                "score": 0.9,
+                "color": "white",
+                "plate": {"text": "ABC123", "score": 0.85},
+                "bbox": [0, 0, 10, 10],
+                "frame_ts": "2026-07-18T15:00:00Z",
+            },
+            {
+                "track_id": "v-1",
+                "label": "sedan",
+                "score": 0.85,
+                "color": "white",
+                "plate": {"text": "ABC123", "score": 0.8},
+                "bbox": [0, 0, 10, 10],
+                "frame_ts": "2026-07-18T15:00:01Z",
+            },
+        ]
+
+        events = PerceptionEvent.consolidate_and_emit(detections)
+
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual(event.entity_type, "vehicle")
+        self.assertEqual(event.schema_version, "1.0")
+        self.assertEqual(event.payload.vehicle_type, "sedan")
+        self.assertEqual(event.payload.color, "white")
+        self.assertEqual(event.payload.plate_text, "ABC123")
+        self.assertIsNotNone(event.payload.plate_confidence)
+        self.assertIn("patente:ABC123", event.candidate_ids)
+
+
+class ConsolidateAndEmitObjectTrackTests(unittest.TestCase):
+    def test_object_track_votes_class_name_no_color_no_plate(self) -> None:
+        detections = [
+            {
+                "track_id": "o-1",
+                "label": "person",
+                "score": 0.9,
+                "bbox": [5, 5, 20, 40],
+                "entity_type": "object",
+                "frame_ts": "2026-07-18T15:00:00Z",
+            },
+            {
+                "track_id": "o-1",
+                "label": "person",
+                "score": 0.8,
+                "bbox": [5, 5, 20, 40],
+                "entity_type": "object",
+                "frame_ts": "2026-07-18T15:00:01Z",
+            },
+        ]
+
+        events = PerceptionEvent.consolidate_and_emit(detections)
+
+        self.assertEqual(len(events), 1)
+        event = events[0]
+        self.assertEqual(event.entity_type, "object")
+        self.assertEqual(event.payload.class_name, "person")
+        self.assertFalse(hasattr(event.payload, "color"))
+        self.assertFalse(hasattr(event.payload, "plate_text"))
+        self.assertFalse(hasattr(event.payload, "vehicle_type"))
+        self.assertNotIn("patente:", "".join(event.candidate_ids))
+        self.assertIn("track:o-1", event.candidate_ids)
+
+    def test_object_track_does_not_crash_without_score_or_bbox(self) -> None:
+        detections = [
+            {
+                "track_id": "o-2",
+                "label": "dog",
+                "score": 0.5,
+                "entity_type": "object",
+            }
+        ]
+
+        events = PerceptionEvent.consolidate_and_emit(detections)
+
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].payload.class_name, "dog")
+
+
+class ConsolidateAndEmitFaceAndSceneTests(unittest.TestCase):
+    def test_face_track(self) -> None:
+        events = PerceptionEvent.consolidate_and_emit(
+            [
+                {
+                    "track_id": "f-1",
+                    "label": "face",
+                    "score": 0.92,
+                    "bbox": [1, 2, 3, 4],
+                    "entity_type": "face",
+                    "frame_ts": "2026-07-18T15:00:00Z",
+                }
+            ]
+        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].entity_type, "face")
+        self.assertEqual(events[0].payload.class_name, "face")
+
+    def test_scene_track(self) -> None:
+        events = PerceptionEvent.consolidate_and_emit(
+            [
+                {
+                    "track_id": "scene-0",
+                    "label": "street",
+                    "score": 0.7,
+                    "bbox": [0, 0, 100, 80],
+                    "entity_type": "scene",
+                    "scene": {
+                        "type": "street",
+                        "ratios": {"road": 0.3},
+                        "infra": {"has_road": True},
+                        "lanes": None,
+                        "crosswalk": None,
+                    },
+                    "frame_ts": "2026-07-18T15:00:00Z",
+                }
+            ]
+        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].entity_type, "scene")
+        self.assertEqual(events[0].payload.scene_type, "street")
+        self.assertEqual(events[0].payload.class_name, "street")
+        self.assertIn("scene:street", events[0].candidate_ids)
+
+    def test_person_with_attrs(self) -> None:
+        events = PerceptionEvent.consolidate_and_emit(
+            [
+                {
+                    "track_id": "o-9",
+                    "label": "person",
+                    "score": 0.88,
+                    "bbox": [1, 2, 3, 4],
+                    "entity_type": "object",
+                    "person": {"gender": "female", "age_group": "adult"},
+                    "frame_ts": "2026-07-18T15:00:00Z",
+                }
+            ]
+        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].payload.person["gender"], "female")
+
+    def test_pose_and_text_tracks(self) -> None:
+        events = PerceptionEvent.consolidate_and_emit(
+            [
+                {
+                    "track_id": "k-1",
+                    "label": "person_pose",
+                    "score": 0.8,
+                    "bbox": [1, 2, 3, 4],
+                    "entity_type": "pose",
+                    "keypoints": [[1, 2]],
+                    "frame_ts": "2026-07-18T15:00:00Z",
+                },
+                {
+                    "track_id": "t-0",
+                    "label": "text",
+                    "score": 0.9,
+                    "bbox": [1, 2, 3, 4],
+                    "entity_type": "text",
+                    "text": "STOP",
+                    "polygon": [[1, 2], [3, 2], [3, 4], [1, 4]],
+                    "frame_ts": "2026-07-18T15:00:00Z",
+                },
+            ]
+        )
+        types = {e.entity_type for e in events}
+        self.assertEqual(types, {"pose", "text"})
+        text_ev = next(e for e in events if e.entity_type == "text")
+        self.assertEqual(text_ev.payload.text, "STOP")
+        self.assertEqual(
+            text_ev.payload.polygon,
+            [[1, 2], [3, 2], [3, 4], [1, 4]],
+        )
+
+
+class IdentityPseudonymizeTests(unittest.TestCase):
+    def test_face_id_hashes_identity(self) -> None:
+        import os
+
+        prev = os.environ.get("IDENTITY_HASH_SALT")
+        os.environ["IDENTITY_HASH_SALT"] = "test-salt-sprint2"
+        try:
+            from adapter.timonel import PerceptionEvent, pseudonymize_identity
+
+            raw = "alice@gallery"
+            expected = pseudonymize_identity(raw)
+            events = PerceptionEvent.consolidate_and_emit(
+                [
+                    {
+                        "track_id": "fi-1",
+                        "label": raw,
+                        "score": 0.95,
+                        "bbox": [1, 2, 3, 4],
+                        "entity_type": "face_id",
+                        "identity": raw,
+                        "frame_ts": "2026-07-18T15:00:00Z",
+                    }
+                ]
+            )
+            self.assertEqual(len(events), 1)
+            self.assertEqual(events[0].payload.identity, expected)
+            self.assertNotEqual(events[0].payload.identity, raw)
+            self.assertIn(f"identity:{expected}", events[0].candidate_ids)
+            self.assertNotIn(f"identity:{raw}", events[0].candidate_ids)
+        finally:
+            if prev is None:
+                os.environ.pop("IDENTITY_HASH_SALT", None)
+            else:
+                os.environ["IDENTITY_HASH_SALT"] = prev
+
+    def test_face_id_omits_identity_without_salt(self) -> None:
+        import os
+
+        prev = os.environ.pop("IDENTITY_HASH_SALT", None)
+        try:
+            events = PerceptionEvent.consolidate_and_emit(
+                [
+                    {
+                        "track_id": "fi-2",
+                        "label": "bob",
+                        "score": 0.9,
+                        "entity_type": "face_id",
+                        "identity": "bob",
+                    }
+                ]
+            )
+            self.assertEqual(len(events), 1)
+            self.assertIsNone(events[0].payload.identity)
+            self.assertTrue(
+                all(not c.startswith("identity:") for c in events[0].candidate_ids)
+            )
+        finally:
+            if prev is not None:
+                os.environ["IDENTITY_HASH_SALT"] = prev
+
+
+class PayloadDiscriminatorRoundTripTests(unittest.TestCase):
+    """B1: cada payload lleva su propio `entity_type` (Literal) y la Union de
+    `PerceptionEvent.payload` usa `Field(discriminator=\"entity_type\")`. Un
+    round-trip JSON debe reconstruir la clase concreta correcta — no la
+    variante equivocada por "smart mode" (forma de campos ambigua)."""
+
+    _SIMPLE_CASES = [
+        ("vehicle", VehiclePayload, {"color": "white"}),
+        ("object", ObjectPayload, {}),
+        ("face", FacePayload, {}),
+        ("scene", ScenePayload, {"scene": {"type": "street"}}),
+        ("pose", PosePayload, {"keypoints": [[1, 2]]}),
+        ("text", TextPayload, {"text": "STOP"}),
+        ("face_id", IdentityPayload, {"identity": "alice"}),
+    ]
+
+    _GENERIC_ENTITY_TYPES = [
+        "sign",
+        "scene_cls",
+        "instance",
+        "small_object",
+        "anomaly",
+        "open_vocab",
+    ]
+
+    def _round_trip(self, entity_type: str, extra: dict) -> PerceptionEvent:
+        detection = {
+            "track_id": f"rt-{entity_type}",
+            "label": entity_type,
+            "score": 0.9,
+            "bbox": [0, 0, 1, 1],
+            "entity_type": entity_type,
+            "frame_ts": "2026-07-18T15:00:00Z",
+            **extra,
+        }
+        events = PerceptionEvent.consolidate_and_emit([detection])
+        self.assertEqual(len(events), 1)
+        dumped = events[0].model_dump_json()
+        return PerceptionEvent.model_validate_json(dumped)
+
+    def test_simple_entity_types_round_trip_to_correct_class(self) -> None:
+        for entity_type, expected_cls, extra in self._SIMPLE_CASES:
+            with self.subTest(entity_type=entity_type):
+                restored = self._round_trip(entity_type, extra)
+                self.assertIsInstance(restored.payload, expected_cls)
+                self.assertEqual(restored.payload.entity_type, entity_type)
+
+    def test_generic_payload_multi_literal_round_trip(self) -> None:
+        for entity_type in self._GENERIC_ENTITY_TYPES:
+            with self.subTest(entity_type=entity_type):
+                restored = self._round_trip(entity_type, {})
+                self.assertIsInstance(restored.payload, GenericPayload)
+                self.assertEqual(restored.payload.entity_type, entity_type)
+                # No debe colar en una variante "vecina" con forma similar.
+                self.assertNotIsInstance(
+                    restored.payload, (TextPayload, ObjectPayload, IdentityPayload, PosePayload)
+                )
+
+    def test_discriminator_rejects_unknown_entity_type_in_payload(self) -> None:
+        with self.assertRaises(Exception):
+            PerceptionEvent.model_validate(
+                {
+                    "entity_type": "vehicle",
+                    "occurred_at": "2026-07-18T15:00:00Z",
+                    "confidence": 0.9,
+                    "payload": {"entity_type": "not-a-real-entity-type"},
+                }
+            )
+
+
+if __name__ == "__main__":
+    unittest.main()

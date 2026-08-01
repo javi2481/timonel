@@ -1,0 +1,37 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -r adapter/requirements.txt -r bridge/requirements.txt ruff
+          # supervision pulls opencv-python (GUI); keep headless only (matches Dockerfile).
+          pip uninstall -y opencv-python || true
+          pip install --force-reinstall opencv-python-headless==4.10.0.84
+      # Critical syntax / undefined-name checks only (keeps CI green on style debt).
+      - name: Ruff (critical)
+        run: ruff check --select=E9,F63,F7,F82 adapter bridge detection rules tests
+      - name: Unit tests
+        run: |
+          PYTHONPATH=. python3 tests/test_timonel.py
+          PYTHONPATH=. python3 tests/test_bridge_helpers.py
+          PYTHONPATH=. python3 tests/test_bridge_cascade.py
+          PYTHONPATH=. python3 tests/test_bridge_lifecycle.py
+          PYTHONPATH=. python3 tests/test_adapter_media.py
+          PYTHONPATH=. python3 tests/test_capabilities.py
+          PYTHONPATH=. python3 tests/test_tiled_infer.py
+          PYTHONPATH=. python3 tests/test_parse_plate_stats.py
+          PYTHONPATH=. python3 tests/test_nms_zones_pr3.py
+          PYTHONPATH=. python3 tests/test_eval_match.py
+      - name: timonel.gen.ts contract in sync (REQ-S5)
+        run: |
+          PYTHONPATH=. python3 scripts/gen_timonel_types.py
+          git diff --exit-code -- contracts/timonel.gen.ts
