@@ -9,12 +9,10 @@
 #   --profile legacy-signs → paddlex-signs :8088 (rollback COCO)
 #   --profile demo         → bridge en DEMO_MODE (sin fotos/GPU)
 #   --profile rules        → JetLinks opcional
-#   --profile gpu          → PaddleX con runtime NVIDIA (requiere NVIDIA Container Toolkit;
-#                            NO aplica en PC-Javier, que solo tiene iGPU AMD)
+#   --profile gpu          → PaddleX con runtime NVIDIA (requiere NVIDIA Container Toolkit)
 #
 # RAM (mem_limit por contenedor paddlex):
-#   Host de referencia PC-Javier: 32 GB / Ryzen 8500G (6c/12t), sin GPU NVIDIA.
-#   Techo único ~2g por contenedor (x-limits-paddlex). Cuello esperado: CPU, no RAM.
+#   Techo ~2g por contenedor (x-limits-paddlex). Default pensado para CPU.
 #   Si un servicio OOMKilled, subí su mem_limit o bajá BRIDGE_MAX_WIDTH.
 #
 # Layout: detection/* + bridge + adapter. Ver README.md (activo vs activable).
@@ -33,8 +31,7 @@ x-paddlex-build: &paddlex-build
   args:
     BASE_IMAGE: ${PADDLE_BASE_IMAGE:-paddlepaddle/paddle:3.0.0}
 
-# Techo por contenedor paddlex. Host de referencia: PC-Javier (32 GB, Ryzen 8500G).
-# Sin cpus: — 6c/12t se reparten entre los paddlex del profile activo; el kernel decide.
+# Techo por contenedor paddlex (~2g). Sin cpus: — el kernel reparte entre servicios.
 x-limits-paddlex: &limits-paddlex
   mem_limit: 2000m
   mem_reservation: 512m

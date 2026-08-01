@@ -2,14 +2,14 @@
 Adaptador FastAPI — media, ingest, consolidación y UI estática.
 
 Responsabilidad: normalizar detecciones (vehicles/objects/plates vía bridge)
-→ PerceptionEvent (timonel). Sirve la SPA (Vite) en /app/.
+→ PerceptionEvent (timonel). Sirve la UI (Vite) en /app/.
 
 NO decide reglas de negocio (JetLinks/rules) ni corre inferencia PaddleX.
 
 Flujo:
   POST /ingest  → acumula por track_id en track_cache (TTL)
   sweeper TTL   → consolidate_and_emit → events_buffer
-  GET  /events  → buffer para la SPA / ECharts
+  GET  /events  → buffer para la UI
   POST /webhook/rules → gancho listo para JetLinks
 """
 

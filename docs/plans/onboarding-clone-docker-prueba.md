@@ -1,10 +1,23 @@
 # Onboarding Clone → Docker → Prueba — Plan de implementación
 
-> **Para agentes de implementación:** usar `superpowers:subagent-driven-development` (recomendado) o `superpowers:executing-plans` y ejecutar cada checkbox en orden.
+> **Estado:** plan aspiracional (checkboxes abiertos). El producto actual es
+> **Timonel**; el Compose hot ya levanta vehicles/objects/ocr/faces/pose +
+> adapter + bridge. Este documento describe un onboarding aún más chico
+> (core de 4 servicios + profile `full`) que **todavía no** está implementado.
+>
+> **Para agentes de implementación:** usar `superpowers:subagent-driven-development`
+> (recomendado) o `superpowers:executing-plans` y ejecutar cada checkbox en orden.
 
-**Objetivo:** lograr que una persona con Docker Desktop/Compose v2 pueda clonar el repositorio, levantar un stack core y probar una inferencia real siguiendo solo el README; el stack completo quedará disponible mediante un tutorial y un profile `full`.
+**Objetivo:** lograr que una persona con Docker Desktop/Compose v2 pueda clonar
+[timonel](https://github.com/javi2481/timonel), levantar un stack core y probar
+una inferencia real siguiendo solo el README; el stack completo quedará
+disponible mediante un tutorial y un profile `full`.
 
-**Arquitectura:** el Compose base contendrá `adapter`, `bridge`, vehículos y objetos. Las capacidades restantes se moverán al profile `full`, con un archivo de entorno propio. La SPA se servirá desde el artefacto construido en la imagen, habrá una imagen de demostración versionada y un smoke portable comprobará el recorrido completo.
+**Arquitectura (objetivo del plan):** el Compose base contendrá `adapter`,
+`bridge`, vehículos y objetos. Las capacidades restantes se moverán al profile
+`full`, con un archivo de entorno propio. La UI de Timonel se servirá desde el
+artefacto construido en la imagen, habrá una imagen de demostración versionada
+y un smoke portable comprobará el recorrido completo.
 
 **Stack:** Docker Compose v2, FastAPI, PaddleX, React/Vite, Python 3.12 y GitHub Actions.
 
@@ -64,18 +77,18 @@
 
 ## Fase 2: Garantizar una UI y una muestra utilizables en un clon limpio
 
-### Tarea 3: Evitar que el bind mount oculte la SPA construida
+### Tarea 3: Evitar que el bind mount oculte la UI construida
 
 **Archivos:**
 - Modificar: `docker-compose.yml`
 - Revisar/modificar: `adapter/Dockerfile`
 - Crear: `scripts/smoke_onboarding.py`
 
-**Resultado:** `/` redirige a `/app/` y `/app/` sirve la SPA desde un checkout sin `adapter/ui/spa/index.html` local.
+**Resultado:** `/` redirige a `/app/` y `/app/` sirve la UI de Timonel desde un checkout sin `adapter/ui/spa/index.html` local.
 
 - [ ] Añadir al smoke aserciones HTTP para `/` (redirect), `/app/`, un asset Vite referenciado por el HTML y `/health`.
 - [ ] Ejecutar el smoke contra el Compose actual desde un checkout limpio y registrar el fallo esperado de `/app/` si el bind mount sigue activo.
-- [ ] Eliminar el bind mount completo `./adapter:/app/adapter` del Compose base; la imagen será la fuente del código y de la SPA.
+- [ ] Eliminar el bind mount completo `./adapter:/app/adapter` del Compose base; la imagen será la fuente del código y de la UI.
 - [ ] Conservar únicamente el volumen de media requerido para subir y seleccionar imágenes.
 - [ ] Confirmar que `adapter/Dockerfile` copia el build Vite a `/app/adapter/ui/spa` y que no requiere Node en runtime.
 - [ ] Reconstruir `adapter` y ejecutar `python scripts/smoke_onboarding.py --ui-only`.
@@ -134,7 +147,7 @@
 - [ ] Explicar cómo inspeccionar progreso con `docker compose ps` y `docker compose logs -f bridge`.
 - [ ] Indicar que el primer arranque descarga imágenes/modelos y puede tardar varios minutos.
 - [ ] Corregir el mapa de servicios y eliminar referencias obsoletas a profiles `extended` y `experimental`.
-- [ ] Documentar `/app/` como única UI (SPA incluida en la imagen); `/` redirige a `/app/`.
+- [ ] Documentar `/app/` como única UI de Timonel (incluida en la imagen); `/` redirige a `/app/`.
 - [ ] Validar todos los comandos copiándolos desde un checkout limpio en PowerShell y Bash.
 - [ ] Commit sugerido: `docs: add clone-to-core onboarding`.
 
@@ -175,7 +188,7 @@
 - Modificar: `scripts/smoke_onboarding.py`
 - Modificar: `tests/README.md`
 
-**Resultado:** CI detecta perfiles rotos, puertos duplicados, SPA que no compila y documentación desalineada.
+**Resultado:** CI detecta perfiles rotos, puertos duplicados, UI que no compila y documentación desalineada.
 
 - [ ] Añadir a CI `docker compose config --quiet` para core y full.
 - [ ] Ejecutar `python tests/test_compose_onboarding.py`.

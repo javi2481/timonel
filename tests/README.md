@@ -2,9 +2,9 @@
 
 ## Para qué sirve
 
-Tests stdlib (`unittest`) de helpers de detection, bridge.media, timonel y
-media del adapter. No son CI obligatoria localmente; GitHub Actions corre los
-mismos tres archivos en `.github/workflows/ci.yml`.
+Tests stdlib (`unittest`) de helpers de detection, bridge, contrato Timonel y
+media del adapter. En local son opcionales; GitHub Actions corre la misma suite
+en `.github/workflows/ci.yml`.
 
 ## Cómo funciona
 
@@ -12,11 +12,16 @@ Desde la raíz del repo, con deps instaladas (`opencv`, `numpy`, `pydantic`,
 `fastapi`, …):
 
 ```bash
+PYTHONPATH=. python3 tests/test_timonel.py
 PYTHONPATH=. python3 tests/test_bridge_helpers.py
 PYTHONPATH=. python3 tests/test_bridge_cascade.py
 PYTHONPATH=. python3 tests/test_bridge_lifecycle.py
-PYTHONPATH=. python3 tests/test_timonel.py
 PYTHONPATH=. python3 tests/test_adapter_media.py
+PYTHONPATH=. python3 tests/test_capabilities.py
+PYTHONPATH=. python3 tests/test_tiled_infer.py
+PYTHONPATH=. python3 tests/test_nms_zones_pr3.py
+PYTHONPATH=. python3 tests/test_parse_plate_stats.py
+PYTHONPATH=. python3 tests/test_eval_match.py
 ```
 
 Con vendor local (si existe `.vendor/`):
@@ -46,16 +51,19 @@ Ninguno. Requiere packages de `bridge/requirements.txt` + `adapter/requirements.
 
 | Test | Cubre |
 |------|--------|
+| `test_timonel.py` | consolidación / entity_type / contrato |
 | `test_bridge_helpers.py` | geometry, preview, vehicles, objects, media |
 | `test_bridge_cascade.py` | cascada por evidencia (política + gather) |
 | `test_bridge_lifecycle.py` | pause/unpause idle + wake oleada 2 |
-| `test_timonel.py` | consolidación / entity_type |
-| `test_adapter_media.py` | auto-select mtime |
+| `test_adapter_media.py` | media watch / select |
+| `test_capabilities.py` | plano de control GET/PUT |
+| `test_tiled_infer.py` | tiling / round-trip detecciones |
+| `test_nms_zones_pr3.py` | NMS cross-cap + zonas |
+| `test_parse_plate_stats.py` | parseo stats de patentes |
 | `test_eval_match.py` | IoU matcher, OCR normalize, thresholds/baseline, pack registry |
 
-```bash
-PYTHONPATH=. python3 tests/test_eval_match.py
-```
+CI también regenera `contracts/timonel.gen.ts` vía `scripts/gen_timonel_types.py`
+y falla si el archivo commiteado está desfasado.
 
 ## Qué no es
 

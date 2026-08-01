@@ -12,7 +12,7 @@ es **hay una señal aquí**.
 2. `SIGNS_BACKEND=ov` (default) → POST `/open-vocabulary-detection` con
    `build_open_vocab_body` (`SIGNS_OV_PROMPT` + `SIGNS_OV_THRESHOLD`).
 3. Label **colapsado a `"sign"`**. `categoryName` del prompt + score van como
-   `hint` (pista, no veredicto) — alineado con timonel.
+   `hint` (pista, no veredicto) — alineado con el contrato Timonel.
 4. Ownership: **"señal" es exclusiva de esta capacidad**. `OPEN_VOCAB_PROMPT`
    no debe incluir `"traffic sign"` (si no, el mismo cartel sale como
    `sign/s-*` y `open_vocab/ov-*`; NMS-B no los fusiona).

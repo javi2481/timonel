@@ -78,7 +78,7 @@ Asserts del script:
 
 ## Paso 3 — Smoke UI cualitativo
 
-Abrir `http://localhost:8000` (o `/app/`), contrastar overlay/tabla con el JSON de `/events` del paso 2.
+Abrir `http://localhost:8000/` (UI Timonel), contrastar overlay/tabla con el JSON de `/events` del paso 2.
 
 Checklist → knobs: ver plan e2e original (OCR off ≠ fallo detector; recall objects ~0.31 = under-detection conocido).
 

@@ -42,7 +42,7 @@ Imagen Docker compartida de PaddleX y su entrypoint. Los servicios
 
 ## Optimización (Fase 0)
 
-### Benchmark (latency)
+### Benchmark (latencia)
 
 Con el stack up:
 
@@ -52,9 +52,9 @@ PYTHONPATH=. python3 scripts/benchmark_paddlex.py --image imagenes_muestra/TU_FO
 
 Anotar `mean_s` por servicio. Criterio para HPIP: mejora ≥ ~1.5× vs baseline.
 
-**Accuracy ≠ latency.** For a local Core accuracy gate (fixtures + IoU/OCR scoring,
-not CI), use [`scripts/download_paddlex_eval.py`](../scripts/download_paddlex_eval.py)
-+ [`scripts/eval_paddlex_fixtures.py`](../scripts/eval_paddlex_fixtures.py). See
+**Accuracy ≠ latencia.** Para el gate local Core (fixtures + scoring IoU/OCR,
+no CI), usá [`scripts/download_paddlex_eval.py`](../scripts/download_paddlex_eval.py)
++ [`scripts/eval_paddlex_fixtures.py`](../scripts/eval_paddlex_fixtures.py). Ver
 [`imagenes_muestra/README.md`](../imagenes_muestra/README.md).
 
 ### HPIP
@@ -78,8 +78,8 @@ El entrypoint exige `nvidia-smi` usable cuando `TIMONEL_DEVICE=gpu`; si no hay G
 
 ### Límites de RAM (compose)
 
-Ver README raíz (§ RAM del host). Anchor único `x-limits-paddlex` (~2g por
-contenedor). Host de referencia PC-Javier: 32 GB, Ryzen 8500G, sin GPU NVIDIA.
+Ver README raíz (§ Recursos). Anchor único `x-limits-paddlex` (~2g por
+contenedor). El stack default está pensado para CPU; GPU es opcional (`--profile gpu`).
 
 ### Modelos lite (CPU)
 
@@ -90,15 +90,15 @@ contenedor). Host de referencia PC-Javier: 32 GB, Ryzen 8500G, sin GPU NVIDIA.
 | Scene | PP-LiteSeg-T en YAML lane/bdd |
 | Faces | PP-YOLOE_plus-S_face vía YAML `detection/faces/pipeline.yaml` (endpoint `/object-detection`) |
 
-### Tune bridge
+### Ajuste del bridge
 
 | Var | Default | Nota |
 |-----|---------|------|
-| `BRIDGE_MAX_WIDTH` | 1920 | Max JPEG width for non-tiled caps (foto one-shot). Lower if OOMKilled. With `ENABLE_INFER_TILING`, vehicles/objects use `INFER_SLICE_WH` on hires |
-| `ENABLE_INFER_TILING` | false | SAHI `InferenceSlicer` for vehicles/objects (NMS-A / IOU) |
-| `INFER_SLICE_WH` | 640 | Tile size px (PR1 measured) |
-| `INFER_OVERLAP_WH` | 100 | Tile overlap px; supervision 0.28 default (`< INFER_SLICE_WH`) |
-| `INFER_TILE_THREAD_WORKERS` | 1 | Slicer thread pool (keep 1 unless measured) |
+| `BRIDGE_MAX_WIDTH` | 1920 | Ancho máx. JPEG para caps sin tiling (foto one-shot). Bajá si OOMKilled. Con `ENABLE_INFER_TILING`, vehicles/objects usan `INFER_SLICE_WH` en hires |
+| `ENABLE_INFER_TILING` | false | SAHI `InferenceSlicer` para vehicles/objects (NMS-A / IoU) |
+| `INFER_SLICE_WH` | 640 | Tamaño de tile en px (medido en PR1) |
+| `INFER_OVERLAP_WH` | 100 | Solape de tile en px; default supervision 0.28 (`< INFER_SLICE_WH`) |
+| `INFER_TILE_THREAD_WORKERS` | 1 | Pool de threads del slicer (dejar en 1 salvo medición) |
 | `HTTP_TIMEOUT` | 30 | Subir si scene/seg tarda |
 | `OCR_TOPK` / `OCR_HTTP_TIMEOUT` | 3 / 5 | Limitar costo OCR |
 
@@ -111,7 +111,7 @@ HTTP serving de cada pipeline según el servicio.
 - `Dockerfile.paddlex`
 - `entrypoint.paddlex.sh`
 - [`scripts/benchmark_paddlex.py`](../scripts/benchmark_paddlex.py)
-- [`scripts/download_paddlex_eval.py`](../scripts/download_paddlex_eval.py) / [`scripts/eval_paddlex_fixtures.py`](../scripts/eval_paddlex_fixtures.py) (accuracy, host-only)
+- [`scripts/download_paddlex_eval.py`](../scripts/download_paddlex_eval.py) / [`scripts/eval_paddlex_fixtures.py`](../scripts/eval_paddlex_fixtures.py) (accuracy, solo host)
 - [`scripts/smoke_extended.sh`](../scripts/smoke_extended.sh)
 
 ## Qué no es

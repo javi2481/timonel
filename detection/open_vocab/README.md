@@ -29,7 +29,7 @@ El default upstream (`GroundingDINO-T`) en paddle 3.0.0 CPU responde 500
 ## Gate / aviso
 
 Más lento/pesado que objects. Es **prompt-driven**, no class-agnostic: sin
-términos en el prompt no hay hit. Override por env; prompt por upload en SPA
+términos en el prompt no hay hit. Override por env; prompt por upload en la UI
 queda fuera de esta entrega. Caída aislada en el client (`None` ante 5xx).
 
 ## Servicio / deps

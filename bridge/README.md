@@ -2,7 +2,7 @@
 
 ## Para qué sirve
 
-Orquestador foto-only: elige la foto activa, llama a `detection/*`, empuja
+Orquestador solo-foto: elige la foto activa, llama a `detection/*`, empuja
 preview e ingest al adapter.
 
 ## Cómo funciona
@@ -27,7 +27,7 @@ Con `ENABLE_EVIDENCE_CASCADE=true` (default en compose):
 `false` = gather único.
 
 Esto reduce **invocaciones/CPU** en ped/face_id. Con
-`ENABLE_CONTAINER_LIFECYCLE=true` (opt-in) el bridge también hace
+`ENABLE_CONTAINER_LIFECYCLE=true` (opcional) el bridge también hace
 `docker pause` de `pedestrians` / `face_id` tras idle y `unpause` al
 disparar oleada 2. No libera RAM (`pause` congela CPU). `open_vocab` no se
 pausa: comparte contenedor con `signs`. Requiere montar el
@@ -52,10 +52,10 @@ Docker sock en el servicio bridge.
 
 - `main.py` — `run_loop`, `run_detections` (flujo completo).
 - `cascade.py` — política pura de evidencia (testeable sin HTTP).
-- `lifecycle.py` — pause/unpause Docker de ped/face_id (opt-in).
+- `lifecycle.py` — pause/unpause Docker de ped/face_id (opcional).
 - `media.py` — resolución de ruta / idle.
 
 ## Qué no es
 
 No abre RTSP ni video. No consolida tracks (eso es `adapter/`). No sirve UI.
-No hace `docker stop`/scale-0 (solo `pause` opt-in; cold start queda fuera).
+No hace `docker stop`/scale-0 (solo `pause` opcional; cold start queda fuera).

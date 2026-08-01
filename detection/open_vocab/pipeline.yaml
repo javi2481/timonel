@@ -1,4 +1,4 @@
-# Default open_vocab en CPU (PC-Javier / paddle 3.0.0).
+# Default open_vocab en CPU (paddle 3.0.0).
 # GroundingDINO-T (default upstream PaddleX) falla en infer con
 # RuntimeError: could not reshape a memory descriptor (static runner / OneDNN).
 # YOLO-Worldv2-L verifica OK en el mismo stack CPU.
