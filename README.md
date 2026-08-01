@@ -1,5 +1,11 @@
 # Timonel
 
+## English summary
+
+Timonel orchestrates PaddleX detectors over **one photo** — objects, faces, and on-demand layers (pose, vehicles, text, …). You toggle each layer and see what it contributes. Stack: Docker Compose + FastAPI adapter/bridge + SPA. Try it with `docker compose up --build --wait`, then open http://localhost:8000/.
+
+---
+
 Timonel orquesta detectores PaddleX sobre **una foto**: objetos, caras y
 capas bajo demanda (pose, vehículos, texto, …). Vos prendés cada capa y mirás
 qué aporta.
