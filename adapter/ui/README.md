@@ -5,6 +5,9 @@
 UI de Timonel (Vite/React) servida por el adapter + placeholder de preview.
 Abrís `http://localhost:8000/`; el adapter redirige `/` → `/app/`.
 
+Empty-state: elegí `demo_*.jpg` (core) o subí una foto; después **Prender**
+una capa bajo demanda para re-analizar la misma imagen.
+
 ## Cómo funciona
 
 1. Fuente en `spa-src/` → `npm run build` (o stage Node del Dockerfile) → `spa/`.

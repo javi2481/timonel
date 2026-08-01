@@ -45,8 +45,10 @@ class CapabilitiesGetTests(unittest.TestCase):
                     os.environ,
                     {
                         "ENABLE_FACE_DETECTION": "false",
+                        "ENABLE_VEHICLES": "false",
                         "ENABLE_PEDESTRIAN_ATTRS": "true",
                         "ENABLE_PLATE_OCR": "true",
+                        "CAPABILITY_HEALTH_CHECK": "false",
                     },
                     clear=False,
                 ):
@@ -63,13 +65,13 @@ class CapabilitiesGetTests(unittest.TestCase):
                             self.assertIsInstance(entry["available"], bool)
                             self.assertIsInstance(entry["active"], bool)
                             self.assertIn("name", entry)
-                        self.assertTrue(caps["vehicle"]["available"])
+                        self.assertFalse(caps["vehicle"]["available"])
                         self.assertTrue(caps["object"]["available"])
-                        self.assertTrue(caps["vehicle"]["active"])
+                        self.assertFalse(caps["vehicle"]["active"])
                         self.assertTrue(caps["object"]["active"])
                         self.assertFalse(caps["face"]["available"])
                         self.assertFalse(caps["face"]["active"])
-                        self.assertTrue(caps["vehicle"].get("critical"))
+                        self.assertFalse(caps["vehicle"].get("critical"))
             finally:
                 ad.MEDIA_DIR = prev
 
@@ -101,7 +103,9 @@ class CapabilitiesPutTests(unittest.TestCase):
                     os.environ,
                     {
                         "ENABLE_FACE_DETECTION": "true",
+                        "ENABLE_VEHICLES": "false",
                         "ENABLE_POSE": "false",
+                        "CAPABILITY_HEALTH_CHECK": "false",
                     },
                     clear=False,
                 ):
@@ -109,6 +113,7 @@ class CapabilitiesPutTests(unittest.TestCase):
                         before = client.get("/capabilities").json()
                         gen0 = before["generation"]
                         self.assertTrue(before["capabilities"]["face"]["active"])
+                        self.assertFalse(before["capabilities"]["vehicle"]["available"])
 
                         # Deactivate faces — no re-run (generation estable)
                         r1 = client.put(
@@ -119,12 +124,11 @@ class CapabilitiesPutTests(unittest.TestCase):
                         body1 = r1.json()
                         self.assertEqual(body1["generation"], gen0)
                         self.assertFalse(body1["capabilities"]["face"]["active"])
-                        self.assertTrue(body1["capabilities"]["vehicle"]["active"])
 
-                        # vehicle.active=false → 400
+                        # vehicle unavailable → activate 400
                         r_v = client.put(
                             "/capabilities",
-                            json={"active": {"vehicle": False}},
+                            json={"active": {"vehicle": True}},
                         )
                         self.assertEqual(r_v.status_code, 400)
 
@@ -160,7 +164,7 @@ class CapabilitiesPutTests(unittest.TestCase):
                         self.assertEqual(r3.status_code, 200)
                         self.assertEqual(r3.json()["generation"], gen_face)
                         self.assertTrue(r3.json()["capabilities"]["face"]["active"])
-                        self.assertTrue(r3.json()["capabilities"]["vehicle"]["active"])
+                        self.assertFalse(r3.json()["capabilities"]["vehicle"]["active"])
             finally:
                 ad.MEDIA_DIR = prev
 

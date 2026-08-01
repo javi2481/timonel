@@ -1,0 +1,20 @@
+# Override: GPU vehicles serving. Uso:
+#   docker compose -f docker-compose.yml -f compose.gpu.yml --profile full up --build
+#
+# Sustituye el servicio paddlex (profile full en el compose base) por imagen/runtime NVIDIA.
+# Requiere NVIDIA Container Toolkit. No publica un segundo servicio en :8080.
+services:
+  paddlex:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.paddlex
+      args:
+        BASE_IMAGE: ${PADDLE_GPU_BASE_IMAGE:-paddlepaddle/paddle:3.0.0-gpu-cuda11.8-cudnn8.9-trt8.6}
+        DEVICE: gpu
+    image: timonel/paddlex-gpu:local
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - PYTHONUNBUFFERED=1
+      - TIMONEL_DEVICE=gpu
+      - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}

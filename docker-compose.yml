@@ -1,19 +1,28 @@
-# Timonel — foto-only (contrato Timonel)
+# Timonel - foto-only (contrato Timonel)
 # Orquestar, no inventar. Un solo comando: docker compose up --build
 #
 # Perfiles:
-#   (default)  hot (~5 paddlex: vehicles, ocr, objects, faces, pose)
-#              + adapter + bridge  — plates+text usan paddlex-ocr
-#   --profile extended     → pedestrians, scene, open-vocab (signs vía OV)
-#   --profile experimental → face-id, scene-cls, instances, small-objects, anomaly
-#   --profile legacy-signs → paddlex-signs :8088 (rollback COCO)
-#   --profile demo         → bridge en DEMO_MODE (sin fotos/GPU)
-#   --profile rules        → JetLinks opcional
-#   --profile gpu          → PaddleX con runtime NVIDIA (requiere NVIDIA Container Toolkit)
+#   (default)        core minimo: paddlex-objects + paddlex-faces + adapter + bridge
+#                    (deteccion de objetos/personas + rostros; sin vehiculos/ocr/pose)
+#   --profile full   agrega el resto de capacidades PaddleX: paddlex (vehiculos),
+#                    paddlex-ocr, paddlex-pose, paddlex-pedestrians, paddlex-scene,
+#                    paddlex-face-id, paddlex-scene-cls, paddlex-instances,
+#                    paddlex-small-objects, paddlex-anomaly, paddlex-open-vocab
+#                    (signs via open-vocab, SIGNS_BACKEND=ov)
+#   --profile legacy-signs   paddlex-signs :8088 (rollback COCO; producto usa open-vocab)
+#   --profile demo           bridge-demo en DEMO_MODE (sin fotos reales, sin GPU)
+#                            CAVEAT: bridge-demo no habla con ningun paddlex-*, solo
+#                            ejercita adapter (ingest/health) para smoke tests/demos.
+#   --profile rules          JetLinks + rules-sink (webhooks/reglas), opcional
+#
+# GPU: no hay servicio paddlex-gpu en este archivo. Para correr "paddlex" (vehiculos,
+# profile full) con runtime NVIDIA, usar el override compose.gpu.yml:
+#   docker compose -f docker-compose.yml -f compose.gpu.yml --profile full up --build
+# (requiere NVIDIA Container Toolkit)
 #
 # RAM (mem_limit por contenedor paddlex):
 #   Techo ~2g por contenedor (x-limits-paddlex). Default pensado para CPU.
-#   Si un servicio OOMKilled, subí su mem_limit o bajá BRIDGE_MAX_WIDTH.
+#   Si un servicio OOMKilled, sube su mem_limit o baja BRIDGE_MAX_WIDTH.
 #
 # Layout: detection/* + bridge + adapter. Ver README.md (activo vs activable).
 
@@ -31,7 +40,7 @@ x-paddlex-build: &paddlex-build
   args:
     BASE_IMAGE: ${PADDLE_BASE_IMAGE:-paddlepaddle/paddle:3.0.0}
 
-# Techo por contenedor paddlex (~2g). Sin cpus: — el kernel reparte entre servicios.
+# Techo por contenedor paddlex (~2g). Sin cpus: - el kernel reparte entre servicios.
 x-limits-paddlex: &limits-paddlex
   mem_limit: 2000m
   mem_reservation: 512m
@@ -52,43 +61,11 @@ x-paddlex-cpu: &paddlex-cpu
 networks:
   timonel-network:
     name: timonel-network
-    external: true
 
 services:
-  paddlex:
-    <<: [*paddlex-cpu, *limits-paddlex]
-    image: timonel/paddlex:local
-    container_name: tm-paddlex
-    ports:
-      - "${PADDLEX_PORT:-8080}:8080"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}
-    volumes:
-      - paddlex-models:/root/.paddlex
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/docs || curl -fsS http://127.0.0.1:8080/openapi.json || exit 1"]
-      <<: *paddlex-health
+  # --- CORE (default, sin profile) ---
 
-  paddlex-ocr:
-    <<: [*paddlex-cpu, *limits-paddlex]
-    image: timonel/paddlex-ocr:local
-    container_name: tm-paddlex-ocr
-    ports:
-      - "${PADDLEX_OCR_PORT:-8081}:8081"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - TIMONEL_PIPELINE=${OCR_PIPELINE_CONFIG:-/opt/paddlex/pipelines/ocr_v5_mobile.yaml}
-      - TIMONEL_PORT=8081
-      - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}
-    volumes:
-      - paddlex-ocr-models:/root/.paddlex
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/docs || curl -fsS http://127.0.0.1:8081/openapi.json || exit 1"]
-      <<: *paddlex-health
-
-  # Object detection COCO (person, dog, …). Merge en detection/objects.
-
+  # Object detection COCO (person, dog, ...). Merge en detection/objects.
   paddlex-objects:
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-objects:local
@@ -116,7 +93,7 @@ services:
       - "${PADDLEX_FACES_PORT:-8083}:8083"
     environment:
       - PYTHONUNBUFFERED=1
-      # PaddleX 3.7 no tiene pipeline face_detection; YAML local → /object-detection
+      # PaddleX 3.7 no tiene pipeline face_detection; YAML local -> /object-detection
       - TIMONEL_PIPELINE=/opt/paddlex/pipelines/face_detection.yaml
       - TIMONEL_PORT=8083
       - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}
@@ -127,9 +104,44 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8083/docs || curl -fsS http://127.0.0.1:8083/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # Opt-in: docker compose --profile extended up …
+  # --- FULL (docker compose --profile full up) ---
+
+  paddlex:
+    profiles: ["full"]
+    <<: [*paddlex-cpu, *limits-paddlex]
+    image: timonel/paddlex:local
+    container_name: tm-paddlex
+    ports:
+      - "${PADDLEX_PORT:-8080}:8080"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}
+    volumes:
+      - paddlex-models:/root/.paddlex
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/docs || curl -fsS http://127.0.0.1:8080/openapi.json || exit 1"]
+      <<: *paddlex-health
+
+  paddlex-ocr:
+    profiles: ["full"]
+    <<: [*paddlex-cpu, *limits-paddlex]
+    image: timonel/paddlex-ocr:local
+    container_name: tm-paddlex-ocr
+    ports:
+      - "${PADDLEX_OCR_PORT:-8081}:8081"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - TIMONEL_PIPELINE=${OCR_PIPELINE_CONFIG:-/opt/paddlex/pipelines/ocr_v5_mobile.yaml}
+      - TIMONEL_PORT=8081
+      - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}
+    volumes:
+      - paddlex-ocr-models:/root/.paddlex
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/docs || curl -fsS http://127.0.0.1:8081/openapi.json || exit 1"]
+      <<: *paddlex-health
+
   paddlex-pedestrians:
-    profiles: ["extended"]
+    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-pedestrians:local
     container_name: tm-paddlex-pedestrians
@@ -146,9 +158,8 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8084/docs || curl -fsS http://127.0.0.1:8084/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # Opt-in: docker compose --profile extended up …
   paddlex-scene:
-    profiles: ["extended"]
+    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-scene:local
     container_name: tm-paddlex-scene
@@ -166,6 +177,7 @@ services:
       <<: *paddlex-health
 
   paddlex-pose:
+    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-pose:local
     container_name: tm-paddlex-pose
@@ -182,9 +194,8 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8086/docs || curl -fsS http://127.0.0.1:8086/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # Opt-in: docker compose --profile experimental up …
   paddlex-face-id:
-    profiles: ["experimental"]
+    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-face-id:local
     container_name: tm-paddlex-face-id
@@ -197,35 +208,14 @@ services:
       - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}
     volumes:
       - paddlex-face-id-models:/root/.paddlex
-      # Hot-patch: FaissBuilder (N,1,D)→(N,D). Bake-in: Dockerfile.paddlex.
+      # Hot-patch: FaissBuilder (N,1,D)->(N,D). Bake-in: Dockerfile.paddlex.
       - ./infra/patches/paddlex_faisser.py:/usr/local/lib/python3.10/dist-packages/paddlex/inference/pipelines/components/faisser.py:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8087/docs || curl -fsS http://127.0.0.1:8087/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # Legacy COCO signs (:8088). Opt-in: docker compose --profile legacy-signs up paddlex-signs
-  # Producto usa paddlex-open-vocab :8093 (SIGNS_BACKEND=ov). Ver detection/signs/README.
-  paddlex-signs:
-    profiles: ["legacy-signs"]
-    <<: [*paddlex-cpu, *limits-paddlex]
-    image: timonel/paddlex-signs:local
-    container_name: tm-paddlex-signs
-    ports:
-      - "${PADDLEX_SIGNS_PORT:-8088}:8088"
-    environment:
-      - PYTHONUNBUFFERED=1
-      - TIMONEL_PIPELINE=object_detection
-      - TIMONEL_PORT=8088
-      - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}
-    volumes:
-      - paddlex-signs-models:/root/.paddlex
-    healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8088/docs || curl -fsS http://127.0.0.1:8088/openapi.json || exit 1"]
-      <<: *paddlex-health
-
-  # Opt-in: docker compose --profile experimental up …
   paddlex-scene-cls:
-    profiles: ["experimental"]
+    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-scene-cls:local
     container_name: tm-paddlex-scene-cls
@@ -244,9 +234,8 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8089/docs || curl -fsS http://127.0.0.1:8089/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # Opt-in: docker compose --profile experimental up …
   paddlex-instances:
-    profiles: ["experimental"]
+    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-instances:local
     container_name: tm-paddlex-instances
@@ -263,9 +252,9 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8090/docs || curl -fsS http://127.0.0.1:8090/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # Opt-in: docker compose --profile experimental up … (preferí ENABLE_INFER_TILING)
+  # Preferi ENABLE_INFER_TILING antes que esto para objetos chicos.
   paddlex-small-objects:
-    profiles: ["experimental"]
+    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-small-objects:local
     container_name: tm-paddlex-small-objects
@@ -282,9 +271,8 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8091/docs || curl -fsS http://127.0.0.1:8091/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # Opt-in: docker compose --profile experimental up …
   paddlex-anomaly:
-    profiles: ["experimental"]
+    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-anomaly:local
     container_name: tm-paddlex-anomaly
@@ -301,9 +289,10 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8092/docs || curl -fsS http://127.0.0.1:8092/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # Opt-in: docker compose --profile extended up … (también sirve signs vía OV)
+  # Tambien sirve signs via open-vocab (SIGNS_BACKEND=ov). Build con extras
+  # multimodal (necesarios para open-vocabulary-detection / YOLO-World).
   paddlex-open-vocab:
-    profiles: ["extended"]
+    profiles: ["full"]
     <<: [*limits-paddlex]
     build:
       context: .
@@ -321,7 +310,7 @@ services:
       - "8093:8093"
     environment:
       - PYTHONUNBUFFERED=1
-      # YOLO-Worldv2-L: GroundingDINO-T 500 reshape en paddle 3.0.0 CPU.
+      # YOLO-Worldv2-L: GroundingDINO-T da 500 (reshape) en paddle 3.0.0 CPU.
       - TIMONEL_PIPELINE=/opt/paddlex/pipelines/open_vocab_yoloworld.yaml
       - TIMONEL_PORT=8093
       - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}
@@ -332,34 +321,28 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8093/docs || curl -fsS http://127.0.0.1:8093/openapi.json || exit 1"]
       <<: *paddlex-health
 
-
-  paddlex-gpu:
-    profiles: ["gpu"]
-    <<: *limits-paddlex
-    build:
-      context: .
-      dockerfile: infra/Dockerfile.paddlex
-      args:
-        BASE_IMAGE: ${PADDLE_GPU_BASE_IMAGE:-paddlepaddle/paddle:3.0.0-gpu-cuda11.8-cudnn8.9-trt8.6}
-        DEVICE: gpu
-    image: timonel/paddlex-gpu:local
-    container_name: tm-paddlex-gpu
-    restart: unless-stopped
-    runtime: nvidia
+  # --- LEGACY-SIGNS (rollback COCO signs :8088) ---
+  # Producto usa paddlex-open-vocab :8093 (SIGNS_BACKEND=ov, profile full).
+  # Ver detection/signs/README.
+  paddlex-signs:
+    profiles: ["legacy-signs"]
+    <<: [*paddlex-cpu, *limits-paddlex]
+    image: timonel/paddlex-signs:local
+    container_name: tm-paddlex-signs
     ports:
-      - "${PADDLEX_PORT:-8080}:8080"
+      - "${PADDLEX_SIGNS_PORT:-8088}:8088"
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
       - PYTHONUNBUFFERED=1
-      - TIMONEL_DEVICE=gpu
+      - TIMONEL_PIPELINE=object_detection
+      - TIMONEL_PORT=8088
+      - TIMONEL_USE_HPIP=${TIMONEL_USE_HPIP:-0}
     volumes:
-      - paddlex-models:/root/.paddlex
-    networks:
-      - timonel-network
+      - paddlex-signs-models:/root/.paddlex
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8080/docs || curl -fsS http://127.0.0.1:8080/openapi.json || exit 1"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8088/docs || curl -fsS http://127.0.0.1:8088/openapi.json || exit 1"]
       <<: *paddlex-health
-    logging: *default-logging
+
+  # --- CORE (default, sin profile) ---
 
   adapter:
     build:
@@ -388,12 +371,12 @@ services:
       - MEDIA_WATCH_INTERVAL=${MEDIA_WATCH_INTERVAL:-1.0}
       - PREVIEW_MJPEG_INTERVAL=${PREVIEW_MJPEG_INTERVAL:-0.05}
       # Mirror SPA-relevant ENABLE_* onto adapter (same defaults as bridge).
-      # vehicle/object always available in adapter code (no ENABLE needed).
-      # Hot path ON: faces, pose, scene OCR. Opt-in OFF: rest (need profile + flag).
+      # object/face son core (siempre disponibles); el resto es opt-in (profile full).
+      - ENABLE_VEHICLES=${ENABLE_VEHICLES:-false}
       - ENABLE_FACE_DETECTION=${ENABLE_FACE_DETECTION:-true}
       - ENABLE_SCENE_SEG=${ENABLE_SCENE_SEG:-false}
-      - ENABLE_POSE=${ENABLE_POSE:-true}
-      - ENABLE_SCENE_OCR=${ENABLE_SCENE_OCR:-true}
+      - ENABLE_POSE=${ENABLE_POSE:-false}
+      - ENABLE_SCENE_OCR=${ENABLE_SCENE_OCR:-false}
       - ENABLE_FACE_ID=${ENABLE_FACE_ID:-false}
       - ENABLE_SIGNS=${ENABLE_SIGNS:-false}
       - ENABLE_SCENE_CLS=${ENABLE_SCENE_CLS:-false}
@@ -438,6 +421,10 @@ services:
     depends_on:
       adapter:
         condition: service_healthy
+      paddlex-objects:
+        condition: service_healthy
+      paddlex-faces:
+        condition: service_healthy
     environment:
       - PYTHONPATH=/app
       - MEDIA_DIR=${MEDIA_DIR:-/media}
@@ -463,13 +450,13 @@ services:
       - PADDLEX_OCR_URL=${PADDLEX_OCR_URL:-http://paddlex-ocr:8081}
       - PADDLEX_OBJECTS_URL=${PADDLEX_OBJECTS_URL:-http://paddlex-objects:8082}
       - PADDLEX_OBJECTS_PREDICT_PATH=${PADDLEX_OBJECTS_PREDICT_PATH:-/object-detection}
-      - ENABLE_PLATE_OCR=${ENABLE_PLATE_OCR:-true}
+      - ENABLE_PLATE_OCR=${ENABLE_PLATE_OCR:-false}
       - OCR_MIN_SCORE=${OCR_MIN_SCORE:-0.7}
       - OCR_EVERY_N_FRAMES=${OCR_EVERY_N_FRAMES:-5}
       - OCR_TOPK=${OCR_TOPK:-3}
       - OCR_HTTP_TIMEOUT=${OCR_HTTP_TIMEOUT:-5}
       - PADDLEX_FACES_URL=${PADDLEX_FACES_URL:-http://paddlex-faces:8083}
-      # Faces usa YAML custom con pipeline object_detection → endpoint /object-detection
+      # Faces usa YAML custom con pipeline object_detection -> endpoint /object-detection
       - PADDLEX_FACES_PREDICT_PATH=${PADDLEX_FACES_PREDICT_PATH:-/object-detection}
       - ENABLE_FACE_DETECTION=${ENABLE_FACE_DETECTION:-true}
       - PADDLEX_PEDESTRIANS_URL=${PADDLEX_PEDESTRIANS_URL:-http://paddlex-pedestrians:8084}
@@ -480,16 +467,16 @@ services:
       - ENABLE_SCENE_SEG=${ENABLE_SCENE_SEG:-false}
       - SCENE_LABEL_MODE=${SCENE_LABEL_MODE:-cityscapes}
       - CROSSWALK_MIN_RATIO=${CROSSWALK_MIN_RATIO:-0.01}
-      - ENABLE_POSE=${ENABLE_POSE:-true}
+      - ENABLE_POSE=${ENABLE_POSE:-false}
       - PADDLEX_POSE_URL=${PADDLEX_POSE_URL:-http://paddlex-pose:8086}
-      - ENABLE_SCENE_OCR=${ENABLE_SCENE_OCR:-true}
+      - ENABLE_SCENE_OCR=${ENABLE_SCENE_OCR:-false}
       - SCENE_OCR_MIN_SCORE=${SCENE_OCR_MIN_SCORE:-0.5}
       - SCENE_OCR_MAX_LINES=${SCENE_OCR_MAX_LINES:-20}
       - ENABLE_FACE_ID=${ENABLE_FACE_ID:-false}
       - PADDLEX_FACE_ID_URL=${PADDLEX_FACE_ID_URL:-http://paddlex-face-id:8087}
       - FACE_ID_INDEX_KEY=${FACE_ID_INDEX_KEY:-}
       - ENABLE_SIGNS=${ENABLE_SIGNS:-false}
-      # Producto: YOLO-World vía open-vocab (profile extended). Legacy COCO: SIGNS_BACKEND=coco + profile legacy-signs.
+      # Producto: YOLO-World via open-vocab (profile full). Legacy COCO: SIGNS_BACKEND=coco + profile legacy-signs.
       - SIGNS_BACKEND=${SIGNS_BACKEND:-ov}
       - PADDLEX_SIGNS_OV_URL=${PADDLEX_SIGNS_OV_URL:-http://paddlex-open-vocab:8093}
       - PADDLEX_SIGNS_OV_PREDICT_PATH=${PADDLEX_SIGNS_OV_PREDICT_PATH:-/open-vocabulary-detection}
@@ -508,12 +495,12 @@ services:
       - PADDLEX_ANOMALY_URL=${PADDLEX_ANOMALY_URL:-http://paddlex-anomaly:8092}
       - ENABLE_OPEN_VOCAB=${ENABLE_OPEN_VOCAB:-false}
       - PADDLEX_OPEN_VOCAB_URL=${PADDLEX_OPEN_VOCAB_URL:-http://paddlex-open-vocab:8093}
-      # Cascada: ped←person; face_id←face; open_vocab en oleada 1 (cola larga).
+      # Cascada: ped->person; face_id->face; open_vocab en oleada 1 (cola larga).
       # faces/pose/signs siguen en oleada 1 (sin trigger) hasta medir recall.
       - ENABLE_EVIDENCE_CASCADE=${ENABLE_EVIDENCE_CASCADE:-true}
       - CASCADE_OBJECT_LOW_SCORE=${CASCADE_OBJECT_LOW_SCORE:-0.35}
       # Fase 2 lifecycle: pause ped/face_id en idle; unpause en oleada 2.
-      # Opt-in (docker.sock). open_vocab no se pausa (compartido con signs).
+      # Opt-in: requiere montar el docker.sock via override (no incluido aqui por default).
       - ENABLE_CONTAINER_LIFECYCLE=${ENABLE_CONTAINER_LIFECYCLE:-false}
       - CONTAINER_IDLE_PAUSE_S=${CONTAINER_IDLE_PAUSE_S:-120}
       - DOCKER_SOCK=${DOCKER_SOCK:-/var/run/docker.sock}
@@ -525,12 +512,13 @@ services:
       - ./detection:/app/detection:ro
       - ./bridge:/app/bridge:ro
       - ./imagenes_muestra:/media/images:ro
-      # Solo usado si ENABLE_CONTAINER_LIFECYCLE=true (pause/unpause).
-      - ${DOCKER_SOCK:-/var/run/docker.sock}:/var/run/docker.sock
     networks:
       - timonel-network
     logging: *default-logging
 
+  # --- DEMO (docker compose --profile demo up bridge-demo) ---
+  # CAVEAT: modo demo puro, DEMO_MODE=1, sin llamadas a ningun paddlex-*.
+  # Solo sirve para probar el flujo adapter/ingest sin fotos reales ni GPU.
   bridge-demo:
     profiles: ["demo"]
     build:
@@ -552,6 +540,7 @@ services:
       - timonel-network
     logging: *default-logging
 
+  # --- RULES (docker compose --profile rules up) ---
   jetlinks:
     profiles: ["rules"]
     image: jetlinks/jetlinks-standalone:latest

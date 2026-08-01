@@ -11,9 +11,12 @@ venv/
 *.log
 
 # Muestras locales de imagen (overlay-preview) — pesadas, no versionar.
-# Ignore contents (not the dir itself) so README can be force-included.
+# Ignore contents (not the dir itself) so README / demos can be force-included.
 imagenes_muestra/*
 !imagenes_muestra/README.md
+!imagenes_muestra/LICENSE.md
+!imagenes_muestra/manifest_demo.json
+!imagenes_muestra/demo_*.jpg
 
 # Skill registry local (rutas de máquina del desarrollador).
 .atl/

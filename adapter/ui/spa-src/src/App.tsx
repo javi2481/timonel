@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getCapabilities,
+  putCapabilities,
   type CapabilityEntry,
 } from "./api/client";
 import { AnalyticsRow } from "./components/AnalyticsRow";
@@ -88,6 +89,18 @@ export function App() {
     setVisibility({});
   }, []);
 
+  const onActivate = useCallback(
+    async (entityType: string) => {
+      try {
+        await putCapabilities({ [entityType]: true });
+        await refreshCatalog();
+      } catch {
+        // Keep catalog; user can retry.
+      }
+    },
+    [refreshCatalog],
+  );
+
   return (
     <div className="tm-app">
       <header className="tm-header">
@@ -134,6 +147,7 @@ export function App() {
             onToggleVisible={(entityType, visible) =>
               setVisibility((prev) => ({ ...prev, [entityType]: visible }))
             }
+            onActivate={(entityType) => void onActivate(entityType)}
             onShowHits={onShowHits}
             onHideAll={onHideAll}
           />
@@ -145,9 +159,10 @@ export function App() {
               <div className="tm-stage-idle-inner">
                 <h2 className="tm-stage-idle-title">Timonel</h2>
                 <p className="tm-stage-idle-copy">
-                  Timonel orquesta detectores PaddleX sobre una foto: objetos,
-                  caras, pose, vehículos y texto. Prendé cada capa y mirá qué
-                  aporta. Subí una imagen para empezar.
+                  Timonel orquesta detectores PaddleX sobre una foto. Elegí una
+                  imagen <code>demo_*.jpg</code> del selector (las marcadas core
+                  andan sin profile full) o subí la tuya. Después prendé una capa
+                  bajo demanda en el panel para re-analizar la misma foto.
                 </p>
               </div>
             </div>

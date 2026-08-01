@@ -16,24 +16,22 @@ interface CapabilityDef {
   entityType: string;
 }
 
-/** Base = siempre en el hot path; Bajo demanda = opt-in / profile. */
+/** Base = core default; Bajo demanda = opt-in / profile full. */
 const GROUPS: { title: string; items: CapabilityDef[] }[] = [
   {
     title: "Base",
-    items: [
-      { entityType: "object" },
-      { entityType: "face" },
-      { entityType: "vehicle" },
-      { entityType: "text" },
-    ],
+    items: [{ entityType: "object" }, { entityType: "face" }],
   },
   {
     title: "Bajo demanda",
-    items: [{ entityType: "pose" }, { entityType: "open_vocab" }],
+    items: [
+      { entityType: "pose" },
+      { entityType: "vehicle" },
+      { entityType: "text" },
+      { entityType: "open_vocab" },
+    ],
   },
 ];
-
-const BASE_LOCKED = new Set(["vehicle"]);
 
 type CapState = "pending" | "hit" | "miss" | "unavailable";
 
@@ -91,6 +89,7 @@ interface Props {
   catalog: Record<string, CapabilityEntry>;
   status: SessionStatus;
   onToggleVisible: (entityType: string, visible: boolean) => void;
+  onActivate?: (entityType: string) => void;
   onShowHits: () => void;
   onHideAll: () => void;
 }
@@ -101,6 +100,7 @@ export function CapabilityPanel({
   catalog,
   status,
   onToggleVisible,
+  onActivate,
   onShowHits,
   onHideAll,
 }: Props) {
@@ -164,9 +164,13 @@ export function CapabilityPanel({
           <div className="tm-capability-group" key={group.title}>
             <div className="tm-capability-group-title">{group.title}</div>
             {visibleItems.map((item) => {
+              const entry = catalog[item.entityType];
+              const inferenceOn = entry?.active === true;
               const label = ENTITY_LABELS[item.entityType] ?? item.entityType;
               const count = counts.get(item.entityType) ?? 0;
-              const state = capState(status, true, count);
+              const state = inferenceOn
+                ? capState(status, true, count)
+                : ("unavailable" as CapState);
               const visibleChecked = visibility[item.entityType] === true;
               const canToggle = state === "hit";
               const accent = entityAccent(item.entityType);
@@ -184,24 +188,14 @@ export function CapabilityPanel({
               return (
                 <div
                   key={item.entityType}
-                  className={`tm-capability-item tm-cap-${state}${activeLayer ? " tm-cap-layer-on" : ""}`}
+                  className={`tm-capability-item tm-cap-${inferenceOn ? state : "standby"}${activeLayer ? " tm-cap-layer-on" : ""}`}
                   style={itemStyle}
                 >
                   <span className="tm-capability-icon" style={{ color: accent }}>
                     <CapIcon entityType={item.entityType} color={accent} />
                   </span>
                   <div className="tm-capability-body">
-                    <span className="tm-capability-label">
-                      {labelText}
-                      {BASE_LOCKED.has(item.entityType) && (
-                        <span
-                          className="tm-cap-locked"
-                          title="Capacidad base — siempre en el hot path"
-                        >
-                          base
-                        </span>
-                      )}
-                    </span>
+                    <span className="tm-capability-label">{labelText}</span>
                     {chips.length > 0 && (
                       <div className="tm-cap-chips">
                         {chips.map((chip) => (
@@ -220,44 +214,53 @@ export function CapabilityPanel({
                         )}
                       </div>
                     )}
+                    {!inferenceOn && onActivate && (
+                      <button
+                        type="button"
+                        className="tm-cap-activate"
+                        onClick={() => onActivate(item.entityType)}
+                        title="Prender esta capa y re-analizar la misma foto"
+                      >
+                        Prender
+                      </button>
+                    )}
                   </div>
-                  <span
-                    className={`tm-cap-status tm-cap-status-${state}`}
-                    style={state === "hit" ? { background: accent } : undefined}
-                    title={
-                      state === "pending"
-                        ? "Analizando…"
-                        : state === "hit"
-                          ? `${count} detección${count === 1 ? "" : "es"}`
-                          : state === "miss"
-                            ? "Sin detecciones"
-                            : "No disponible en este deploy"
-                    }
-                    aria-hidden
-                  />
-                  <button
-                    type="button"
-                    className={`tm-eye${!visibleChecked || !canToggle ? " off" : ""}`}
-                    disabled={!canToggle}
-                    title={
-                      canToggle
-                        ? visibleChecked
-                          ? "Ocultar cajas"
-                          : "Mostrar cajas"
-                        : state === "pending"
-                          ? "Analizando…"
-                          : state === "miss"
-                            ? "Sin detecciones"
-                            : "No disponible"
-                    }
-                    aria-label={`${label} visible`}
-                    aria-pressed={canToggle && visibleChecked}
-                    onClick={() =>
-                      onToggleVisible(item.entityType, !visibleChecked)
-                    }
-                  >
-                    <EyeIcon off={!canToggle || !visibleChecked} />
-                  </button>
+                  {inferenceOn ? (
+                    <>
+                      <span
+                        className={`tm-cap-status tm-cap-status-${state}`}
+                        style={
+                          state === "hit" ? { background: accent } : undefined
+                        }
+                        aria-hidden
+                      />
+                      <button
+                        type="button"
+                        className={`tm-eye${!visibleChecked || !canToggle ? " off" : ""}`}
+                        disabled={!canToggle}
+                        title={
+                          canToggle
+                            ? visibleChecked
+                              ? "Ocultar cajas"
+                              : "Mostrar cajas"
+                            : "Sin detecciones"
+                        }
+                        aria-label={`${label} visible`}
+                        aria-pressed={canToggle && visibleChecked}
+                        onClick={() =>
+                          onToggleVisible(item.entityType, !visibleChecked)
+                        }
+                      >
+                        <EyeIcon off={!canToggle || !visibleChecked} />
+                      </button>
+                    </>
+                  ) : (
+                    <span
+                      className="tm-cap-status tm-cap-status-standby"
+                      title="Disponible — prendelá para re-analizar"
+                      aria-hidden
+                    />
+                  )}
                 </div>
               );
             })}

@@ -144,8 +144,9 @@ class AppState:
     # (generation != last_ingest_generation) de "completo".
     last_ingest_generation: Optional[int] = None
     # Runtime active ⊆ deploy available, keyed by SPA entity_type.
-    # Boot: copy(available). Never reset on flush/generation bump.
+    # Boot: object+face when available. Late health → promote via _sync_boot_active.
     active: dict[str, bool] = field(default_factory=dict)
+    prev_available: dict[str, bool] = field(default_factory=dict)
     latest_frame: Optional[bytes] = None
     frame_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     media_seen_mtimes: dict[str, float] = field(default_factory=dict)
@@ -160,9 +161,10 @@ def _env_enabled(name: str, default: str = "false") -> bool:
 
 
 # SPA entity_type → registry name → ENABLE_* (None = always available).
-# critical=True → vehicle: PUT active=false → 400.
+# critical=True → no se puede PUT active=false (ninguna en core objects+faces).
+# vehicle es opt-in (ENABLE_VEHICLES + profile full).
 _SPA_CAPABILITY_DEFS: list[tuple[str, str, Optional[str], bool]] = [
-    ("vehicle", "vehicles", None, True),
+    ("vehicle", "vehicles", "ENABLE_VEHICLES", False),
     ("object", "objects", None, False),
     ("face", "faces", "ENABLE_FACE_DETECTION", False),
     ("scene", "scene", "ENABLE_SCENE_SEG", False),
@@ -176,6 +178,10 @@ _SPA_CAPABILITY_DEFS: list[tuple[str, str, Optional[str], bool]] = [
     ("anomaly", "anomaly", "ENABLE_ANOMALY", False),
     ("open_vocab", "open_vocab", "ENABLE_OPEN_VOCAB", False),
 ]
+
+# Al boot: activas si available. El resto available queda inactive para
+# on-demand (PUT active=true → generation bump → bridge re-corre).
+_BOOT_ACTIVE_WHEN_AVAILABLE: frozenset[str] = frozenset({"object", "face"})
 
 
 def _compute_available() -> dict[str, bool]:
@@ -274,10 +280,24 @@ def reset_capability_health_cache() -> None:
     _health_cache.clear()
 
 
+def _sync_boot_active(st: AppState, available: dict[str, bool]) -> None:
+    """Cuando una capa core pasa a available, activarla (health tardío al boot).
+
+    No re-enciende si el usuario la apagó después de haber estado available.
+    """
+    for key in _BOOT_ACTIVE_WHEN_AVAILABLE:
+        now = bool(available.get(key))
+        was = bool(st.prev_available.get(key))
+        if now and not was:
+            st.active[key] = True
+        st.prev_available[key] = now
+
+
 def _spa_capability_catalog() -> dict[str, Any]:
     """Catálogo GET/PUT keyed por SPA entity_type (sin pedestrians/plates)."""
     st = state()
     available = _compute_available()
+    _sync_boot_active(st, available)
     capabilities: dict[str, dict[str, Any]] = {}
     for entity_type, name, _env, critical in _SPA_CAPABILITY_DEFS:
         avail = available[entity_type]
@@ -415,6 +435,8 @@ def _apply_media_selection(
     path, media_type = resolved
     if media_type != "image":
         return None
+    # Health puede haber llegado después del boot: asegurar core activo.
+    _sync_boot_active(st, _compute_available())
     _flush_detection_session()
     st.current_media = {"name": name, "type": "image"}
     st.generation += 1
@@ -617,8 +639,13 @@ async def lifespan(_app: FastAPI):
     st = AppState()
     if _PLACEHOLDER_JPEG:
         st.latest_frame = _PLACEHOLDER_JPEG
-    # Boot active = copy(available), not all-true.
-    st.active = dict(_compute_available())
+    # Boot: solo object+face activas (cuando available). Resto on-demand.
+    available = _compute_available()
+    st.active = {
+        key: bool(avail and key in _BOOT_ACTIVE_WHEN_AVAILABLE)
+        for key, avail in available.items()
+    }
+    st.prev_available = dict(available)
     _app_state = st
 
     stop = asyncio.Event()
@@ -681,7 +708,7 @@ async def get_capabilities() -> dict[str, Any]:
 
 @app.put("/capabilities")
 async def put_capabilities(request: Request) -> JSONResponse:
-    """Merge parcial de active; vehicle off / unknown / ¬available → 400.
+    """Merge parcial de active; unknown / ¬available → 400.
 
     Solo flush + generation+=1 si se **activa** alguna capacidad que estaba
     off (para que el bridge corra la nueva). Apagar no reanaliza: la SPA
@@ -719,11 +746,6 @@ async def put_capabilities(request: Request) -> JSONResponse:
                 {"ok": False, "error": f"active.{key} must be bool"},
                 status_code=400,
             )
-        if key == "vehicle" and value is False:
-            return JSONResponse(
-                {"ok": False, "error": "vehicle.active cannot be false"},
-                status_code=400,
-            )
         if value is True and not available.get(key, False):
             return JSONResponse(
                 {
@@ -739,12 +761,7 @@ async def put_capabilities(request: Request) -> JSONResponse:
         new = bool(value) and available.get(key, False)
         if new and not was:
             activating = True
-        # Clamp active ∧ available (vehicle stays true if somehow unset).
         st.active[key] = new
-
-    # Ensure vehicle remains active after any successful PUT.
-    if available.get("vehicle", True):
-        st.active["vehicle"] = True
 
     if activating:
         _flush_detection_session()

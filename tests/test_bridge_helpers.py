@@ -704,20 +704,18 @@ class NormalizePoseAndTextTests(unittest.TestCase):
 
 
 class FilterCapabilitiesForGatherTests(unittest.TestCase):
-    def test_always_includes_vehicles_and_pedestrians(self) -> None:
+    def test_empty_active_yields_empty(self) -> None:
         from bridge.main import filter_capabilities_for_gather
 
         names = {c.name for c in filter_capabilities_for_gather(set())}
-        self.assertIn("vehicles", names)
-        self.assertIn("pedestrians", names)
+        self.assertEqual(names, set())
 
-    def test_includes_available_registry_names(self) -> None:
+    def test_includes_only_active_registry_names(self) -> None:
         from bridge.main import filter_capabilities_for_gather
 
         names = {c.name for c in filter_capabilities_for_gather({"faces", "pose"})}
-        self.assertIn("faces", names)
-        self.assertIn("pose", names)
-        self.assertIn("vehicles", names)
+        self.assertEqual(names, {"faces", "pose"})
+        self.assertNotIn("vehicles", names)
 
 
 if __name__ == "__main__":

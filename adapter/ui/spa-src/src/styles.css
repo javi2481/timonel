@@ -537,6 +537,27 @@ html, body, #root {
 }
 .tm-empty-card .tm-btn { margin-top: 0.75rem; }
 
+.tm-cap-activate {
+  margin-top: 0.35rem;
+  font: inherit;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--tm-cap-accent, #8a9bb0);
+  background: transparent;
+  color: var(--tm-cap-accent, #8a9bb0);
+  cursor: pointer;
+  border-radius: 2px;
+}
+.tm-cap-activate:hover {
+  background: color-mix(in srgb, var(--tm-cap-accent, #8a9bb0) 15%, transparent);
+}
+.tm-capability-item.tm-cap-standby {
+  opacity: 0.85;
+}
+.tm-cap-status-standby {
+  background: #5a6a7a;
+}
+
 /* Idle: marca + reseña en el hueco del canvas */
 .tm-stage-idle {
   min-height: 420px;

@@ -155,10 +155,10 @@ async def fetch_current_media(client: httpx.AsyncClient) -> Optional[dict[str, A
     }
 
 
-async def fetch_available_capability_names(client: httpx.AsyncClient) -> set[str]:
-    """Registry names con available=true desde GET /capabilities.
+async def fetch_active_capability_names(client: httpx.AsyncClient) -> set[str]:
+    """Registry names con available=true y active=true desde GET /capabilities.
 
-    La SPA ya no gatea inferencia con active; se corre todo lo deploy-available.
+    El bridge solo corre capas activas (on-demand vía PUT /capabilities).
     Fallback: todos los CAPABILITIES si falla el GET.
     """
     try:
@@ -175,20 +175,16 @@ async def fetch_available_capability_names(client: httpx.AsyncClient) -> set[str
 
     names: set[str] = set()
     for entry in caps.values():
-        if isinstance(entry, dict) and entry.get("available") and entry.get("name"):
+        if not isinstance(entry, dict) or not entry.get("name"):
+            continue
+        if entry.get("available") and entry.get("active"):
             names.add(str(entry["name"]))
     return names
 
 
-def filter_capabilities_for_gather(available_names: set[str]) -> list:
-    """Deploy-available + always vehicles + pedestrians (ENABLE short-circuits inside)."""
-    return [
-        cap
-        for cap in CAPABILITIES
-        if cap.name == "vehicles"
-        or cap.name == "pedestrians"
-        or cap.name in available_names
-    ]
+def filter_capabilities_for_gather(active_names: set[str]) -> list:
+    """Solo capacidades del registry presentes en active_names."""
+    return [cap for cap in CAPABILITIES if cap.name in active_names]
 
 
 async def infer_capability(
@@ -339,13 +335,14 @@ async def run_detections(
     h, w = frame_hires.shape[:2]
     frame_wh = (w, h)
 
-    available_names = await fetch_available_capability_names(client)
+    available_names = await fetch_active_capability_names(client)
     caps = filter_capabilities_for_gather(available_names)
     cascade_cfg = CascadeConfig.from_env()
     tiling = ENABLE_INFER_TILING
     # Tiled caps run via to_thread on hires; exclude from JPEG gather.
     tiled_names = {"vehicles", "objects"} if tiling else set()
     want_objects = any(c.name == "objects" for c in caps)
+    want_vehicles = any(c.name == "vehicles" for c in caps)
 
     eligible_names = {c.name for c in caps}
     wave1_names = wave1_capability_names(
@@ -366,18 +363,20 @@ async def run_detections(
         open_vocab_prompt=open_vocab_prompt,
     )
 
-    if tiling:
-        vehicle_detections = await asyncio.to_thread(
-            infer_vehicles_tiled_sync, frame_hires
-        )
+    if want_vehicles:
+        if tiling:
+            vehicle_detections = await asyncio.to_thread(
+                infer_vehicles_tiled_sync, frame_hires
+            )
+        else:
+            vehicle_detections = by_name.get("vehicles")
+            if vehicle_detections is not None:
+                scale_detections(vehicle_detections, scale_x, scale_y)
+        if vehicle_detections is None:
+            await notify_degraded(client)
+            return None, True, None
     else:
-        vehicle_detections = by_name.get("vehicles")
-        if vehicle_detections is not None:
-            scale_detections(vehicle_detections, scale_x, scale_y)
-
-    if vehicle_detections is None:
-        await notify_degraded(client)
-        return None, True, None
+        vehicle_detections = []
 
     if tiling and want_objects:
         object_raw = await asyncio.to_thread(

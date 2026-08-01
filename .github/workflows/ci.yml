@@ -31,6 +31,21 @@ jobs:
           PYTHONPATH=. python3 tests/test_parse_plate_stats.py
           PYTHONPATH=. python3 tests/test_nms_zones_pr3.py
           PYTHONPATH=. python3 tests/test_eval_match.py
+      - name: Compose onboarding config
+        run: |
+          docker compose config --quiet
+          docker compose --profile full --env-file .env.full.example config --quiet
+          PYTHONPATH=. python3 tests/test_compose_onboarding.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: adapter/ui/spa-src/package-lock.json
+      - name: SPA build
+        working-directory: adapter/ui/spa-src
+        run: |
+          npm ci
+          npm run build
       - name: timonel.gen.ts contract in sync (REQ-S5)
         run: |
           PYTHONPATH=. python3 scripts/gen_timonel_types.py
