@@ -91,6 +91,50 @@ class CapabilitiesGetTests(unittest.TestCase):
             finally:
                 ad.MEDIA_DIR = prev
 
+    def test_face_id_unavailable_without_index_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "images"))
+            prev = ad.MEDIA_DIR
+            ad.MEDIA_DIR = tmp
+            try:
+                with mock.patch.dict(
+                    os.environ,
+                    {
+                        "ENABLE_FACE_ID": "true",
+                        "FACE_ID_INDEX_KEY": "",
+                        "CAPABILITY_HEALTH_CHECK": "false",
+                    },
+                    clear=False,
+                ):
+                    with TestClient(ad.app) as client:
+                        caps = client.get("/capabilities").json()["capabilities"]
+                        self.assertFalse(caps["face_id"]["available"])
+                        self.assertFalse(caps["face_id"]["active"])
+            finally:
+                ad.MEDIA_DIR = prev
+
+    def test_face_id_available_with_index_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, "images"))
+            prev = ad.MEDIA_DIR
+            ad.MEDIA_DIR = tmp
+            try:
+                with mock.patch.dict(
+                    os.environ,
+                    {
+                        "ENABLE_FACE_ID": "true",
+                        "FACE_ID_INDEX_KEY": "test-gallery-key",
+                        "CAPABILITY_HEALTH_CHECK": "false",
+                    },
+                    clear=False,
+                ):
+                    with TestClient(ad.app) as client:
+                        caps = client.get("/capabilities").json()["capabilities"]
+                        self.assertTrue(caps["face_id"]["available"])
+                        self.assertTrue(caps["face_id"]["active"])
+            finally:
+                ad.MEDIA_DIR = prev
+
 
 class CapabilitiesPutTests(unittest.TestCase):
     def test_put_merge_vehicle_off_unknown_clamp_generation(self) -> None:

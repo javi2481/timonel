@@ -187,6 +187,29 @@ export function CapabilityPanel({
                 )}
               </div>
               <div className="tm-cap-row-actions">
+                {canToggleCanvas && (
+                  <span
+                    className={
+                      visibleChecked
+                        ? "tm-cap-check tm-cap-check-on"
+                        : "tm-cap-check"
+                    }
+                    aria-hidden="true"
+                    title={visibleChecked ? "Visible en el canvas" : "Oculta"}
+                  >
+                    {visibleChecked ? (
+                      <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                        <path
+                          d="M3.5 8.5 6.5 11.5 12.5 4.5"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    ) : null}
+                  </span>
+                )}
                 {canPrender && (
                   <button
                     type="button"

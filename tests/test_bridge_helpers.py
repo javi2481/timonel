@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import os
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -37,6 +38,7 @@ from detection.vehicles import (
     normalize_vehicle_result,
     parse_attr_labels,
 )
+import detection.vehicles.client as veh_mod
 
 
 class MaybeResizeForInferTests(unittest.TestCase):
@@ -200,6 +202,29 @@ class NormalizeVehicleResultTests(unittest.TestCase):
         self.assertEqual(dets[0]["color"], "red")
         self.assertEqual(dets[0]["bbox"], [10.0, 20.0, 30.0, 40.0])
         self.assertIn("track_id", dets[0])
+
+    def test_min_score_filters_low_confidence(self) -> None:
+        data = {
+            "result": {
+                "vehicles": [
+                    {
+                        "bbox": [1, 2, 3, 4],
+                        "score": 0.51,
+                        "attributes": [{"label": "sedan(轿车)", "score": 0.8}],
+                    },
+                    {
+                        "bbox": [10, 20, 30, 40],
+                        "score": 0.60,
+                        "attributes": [{"label": "suv(SUV)", "score": 0.8}],
+                    },
+                ]
+            }
+        }
+        with mock.patch.object(veh_mod, "VEHICLES_MIN_SCORE", 0.55):
+            dets = normalize_vehicle_result(data)
+        self.assertEqual(len(dets), 1)
+        self.assertEqual(dets[0]["score"], 0.60)
+        self.assertEqual(dets[0]["label"], "suv")
 
 
 class AttrLabelTests(unittest.TestCase):

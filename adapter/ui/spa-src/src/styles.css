@@ -399,6 +399,28 @@ html, body, #root {
 .tm-cap-hit .tm-capability-label { color: var(--tm-ink); }
 .tm-cap-miss .tm-capability-label { color: var(--tm-muted); }
 
+/* Tilde: capa con cajas visibles en el canvas (click otra vez → se oculta). */
+.tm-cap-check {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  border: 1.5px solid color-mix(in srgb, var(--tm-muted) 55%, transparent);
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: transparent;
+  background: transparent;
+}
+.tm-cap-check-on {
+  border-color: var(--tm-ok);
+  background: color-mix(in srgb, var(--tm-ok) 18%, transparent);
+  color: var(--tm-ok);
+}
+.tm-cap-hit {
+  border-color: color-mix(in srgb, var(--tm-ok) 55%, transparent);
+  background: color-mix(in srgb, var(--tm-ok) 14%, transparent);
+}
+
 .tm-cap-status {
   width: 8px;
   height: 8px;

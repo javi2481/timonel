@@ -1,4 +1,4 @@
-"""Instance segmentation (experimental)."""
+"""Instance segmentation (stack default)."""
 
 from detection.instances.client import (
     ENABLE_INSTANCE_SEG,

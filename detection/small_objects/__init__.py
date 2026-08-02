@@ -1,4 +1,4 @@
-"""Small object detection (experimental)."""
+"""Small object detection (stack default)."""
 
 from detection.small_objects.client import (
     ENABLE_SMALL_OBJECTS,

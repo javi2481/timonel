@@ -94,7 +94,9 @@ Con `docker compose up` / `full_up`:
 
 Profiles que siguen aparte: `legacy-signs`, `demo`, `rules`.
 
-- **Face ID:** `FACE_ID_INDEX_KEY` vacío por default — ver `detection/face_id/`.
+- **Face ID:** sin `FACE_ID_INDEX_KEY` la capa Identidad **no** aparece en el
+  panel (`available=false`). Galería: `scripts/face_id_index_build.py` → ver
+  `detection/face_id/`.
 - **open-vocab / signs:** comparten `:8093`.
 - Apagado: `docker compose down` (añadí `-v` solo si querés borrar caches de modelos).
 

@@ -9,4 +9,4 @@ SubModules:
     model_dir: null
     batch_size: 1
     img_size: null
-    threshold: 0.3
+    threshold: 0.55

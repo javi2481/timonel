@@ -365,6 +365,7 @@ services:
       - ENABLE_POSE=true
       - ENABLE_SCENE_OCR=true
       - ENABLE_FACE_ID=true
+      - FACE_ID_INDEX_KEY=${FACE_ID_INDEX_KEY:-}
       - ENABLE_SIGNS=true
       - ENABLE_SCENE_CLS=true
       - ENABLE_INSTANCE_SEG=true
@@ -429,6 +430,7 @@ services:
       - ADAPTER_CAPABILITIES_URL=${ADAPTER_CAPABILITIES_URL:-http://adapter:8000/capabilities}
       - PADDLEX_URL=${PADDLEX_URL:-http://paddlex:8080}
       - PADDLEX_PREDICT_PATH=${PADDLEX_PREDICT_PATH:-/vehicle-attribute-recognition}
+      - VEHICLES_MIN_SCORE=${VEHICLES_MIN_SCORE:-0.55}
       - BRIDGE_FPS=${BRIDGE_FPS:-1}
       - BRIDGE_MAX_WIDTH=${BRIDGE_MAX_WIDTH:-1920}
       - ENABLE_INFER_TILING=${ENABLE_INFER_TILING:-false}

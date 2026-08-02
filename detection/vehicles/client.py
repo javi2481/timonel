@@ -25,6 +25,8 @@ PADDLEX_PREDICT_PATH = os.getenv(
 )
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "30.0"))
 IOU_THRESHOLD = float(os.getenv("TRACK_IOU_THRESHOLD", "0.3"))
+# Score mínimo del detector (filtra FP en fotos fuera de dominio, p.ej. platos).
+VEHICLES_MIN_SCORE = float(os.getenv("VEHICLES_MIN_SCORE", "0.55"))
 
 _tracker = IoUTracker(IOU_THRESHOLD)
 
@@ -117,14 +119,13 @@ def parse_vehicle_boxes(data: dict[str, Any]) -> list[dict[str, Any]]:
             scores = list(box.get("cls_scores") or [])
 
         color, vtype = parse_attr_labels(labels, scores)
+        score = float(box.get("score") or box.get("det_score") or 0.0)
+        if score < VEHICLES_MIN_SCORE:
+            continue
         meta.append(
             {
                 "label": vtype or "vehicle",
-                "score": float(
-                    box.get("score")
-                    or box.get("det_score")
-                    or 0.0
-                ),
+                "score": score,
                 "color": color,
                 "bbox": bbox,
                 "entity_type": "vehicle",

@@ -1,4 +1,4 @@
-"""Image anomaly detection (experimental)."""
+"""Image anomaly detection (stack default)."""
 
 from detection.anomaly.client import (
     ENABLE_ANOMALY,

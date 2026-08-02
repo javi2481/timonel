@@ -1,4 +1,7 @@
-"""Scaffold instance_segmentation (experimental). GATE: ver README."""
+"""Cliente HTTP instance_segmentation (PaddleX :8090).
+
+Stack default (ENABLE_INSTANCE_SEG vía Compose). Emite entity_type=instance.
+"""
 
 from __future__ import annotations
 

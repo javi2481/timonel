@@ -36,6 +36,6 @@ queda fuera de esta entrega. Caída aislada en el client (`None` ante 5xx).
 
 | Item | Valor |
 |------|--------|
-| Compose | `paddlex-open-vocab` `:8093` (imagen con `PADDLEX_EXTRAS=…,multimodal`) |
+| Compose | `paddlex-open-vocab` `:8093` (stack default; imagen con `PADDLEX_EXTRAS=…,multimodal`) |
 | Env | `ENABLE_OPEN_VOCAB`, `PADDLEX_OPEN_VOCAB_URL`, `OPEN_VOCAB_PROMPT`, `OPEN_VOCAB_THRESHOLD` |
 | Pipeline | `/opt/paddlex/pipelines/open_vocab_yoloworld.yaml` |

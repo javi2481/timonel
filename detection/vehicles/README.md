@@ -25,7 +25,13 @@ Detectar vehículos y leer atributos (tipo + color) vía PaddleX
 |------|--------|
 | Compose | `paddlex` |
 | Puerto | `8080` |
-| Env | `PADDLEX_URL`, `PADDLEX_PREDICT_PATH`, `HTTP_TIMEOUT` |
+| Env | `PADDLEX_URL`, `PADDLEX_PREDICT_PATH`, `HTTP_TIMEOUT`, `VEHICLES_MIN_SCORE` (default `0.55`) |
+
+## Threshold
+
+`VEHICLES_MIN_SCORE` (default **0.55**): el client descarta boxes con score
+menor. Reduce falsos positivos fuera de calle (comida, objetos ovalados).
+Env en el servicio **bridge**; reiniciá bridge tras cambiarlo.
 
 ## Archivos clave
 

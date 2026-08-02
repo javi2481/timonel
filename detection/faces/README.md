@@ -28,6 +28,13 @@ Detectar rostros humanos (bbox + score) vía modelo face PaddleX
 | Puerto | `8083` |
 | Env | `PADDLEX_FACES_URL`, `PADDLEX_FACES_PREDICT_PATH` (default `/object-detection`), `ENABLE_FACE_DETECTION` |
 
+## Threshold
+
+`pipeline.yaml` → `SubModules.ObjectDetection.threshold` (default **0.55**): score
+mínimo del serving. Subilo si hay falsos positivos (comida/objetos redondos);
+bajalo si perdés caras reales débiles. Compose monta el YAML; recreá
+`paddlex-faces` tras cambiarlo.
+
 ## Archivos clave
 
 - `client.py` — `infer_faces`, `normalize_face_result`.

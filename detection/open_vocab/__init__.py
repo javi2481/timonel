@@ -1,4 +1,4 @@
-"""Open-vocabulary detection (experimental)."""
+"""Open-vocabulary detection (stack default)."""
 
 from detection.open_vocab.client import (
     ENABLE_OPEN_VOCAB,

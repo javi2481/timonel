@@ -188,10 +188,16 @@ _BOOT_ACTIVE_WHEN_AVAILABLE: frozenset[str] = frozenset(
 
 
 def _compute_available() -> dict[str, bool]:
-    """available = ENABLE_* only (listable / activatable even if container stopped)."""
+    """available = ENABLE_* (+ Face ID requiere FACE_ID_INDEX_KEY).
+
+    Listable / activatable even if container stopped. Sin galería Face ID
+    la capa no aparece (evita semáforo rojo por 0 hits cuando el infer skipea).
+    """
     out: dict[str, bool] = {}
     for entity_type, _name, env_name, _critical in _SPA_CAPABILITY_DEFS:
         enabled = True if env_name is None else _env_enabled(env_name)
+        if entity_type == "face_id" and enabled:
+            enabled = bool(os.getenv("FACE_ID_INDEX_KEY", "").strip())
         out[entity_type] = enabled
     return out
 

@@ -1,4 +1,4 @@
-"""Clasificación global de escena (experimental)."""
+"""Clasificación global de escena (stack default)."""
 
 from detection.scene_cls.client import (
     ENABLE_SCENE_CLS,
