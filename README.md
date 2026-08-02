@@ -48,8 +48,8 @@ On-demand (start/stop idle) queda como override avanzado:
 
 Abrí [http://localhost:8000/](http://localhost:8000/) (redirige a `/app/`).
 
-1. En el **selector** elegí una foto de `imagenes_muestra` (vienen con el
-   clone) o usá **Subir foto** para una imagen tuya.
+1. Usá **Subir foto** (podés elegir cualquiera de `imagenes_muestra/` desde
+   el diálogo del sistema, o una imagen tuya).
 2. Esperá overlays / eventos (cold start de modelos puede tardar minutos).
 3. Tocá capas verdes (tilde) para ocultar/mostrar detecciones en el canvas.
 

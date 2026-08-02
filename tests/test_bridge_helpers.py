@@ -653,7 +653,7 @@ class NormalizePoseAndTextTests(unittest.TestCase):
                         {
                             "prunedResult": {
                                 "rec_texts": ["STOP", "ABC"],
-                                "rec_scores": [0.95, 0.4],
+                                "rec_scores": [0.95, 0.2],
                                 "dt_polys": [
                                     [[0, 0], [10, 0], [10, 5], [0, 5]],
                                     [[0, 0], [1, 0], [1, 1], [0, 1]],
@@ -672,6 +672,114 @@ class NormalizePoseAndTextTests(unittest.TestCase):
             [[0.0, 0.0], [10.0, 0.0], [10.0, 5.0], [0.0, 5.0]],
         )
         self.assertEqual(dets[0]["bbox"], [0.0, 0.0, 10.0, 5.0])
+
+    def test_scene_ocr_offset_xy(self) -> None:
+        from detection.text import normalize_scene_ocr_result
+
+        dets = normalize_scene_ocr_result(
+            {
+                "result": {
+                    "ocrResults": [
+                        {
+                            "prunedResult": {
+                                "rec_texts": ["HATS"],
+                                "rec_scores": [0.9],
+                                "dt_polys": [
+                                    [[1, 2], [11, 2], [11, 8], [1, 8]],
+                                ],
+                            }
+                        }
+                    ]
+                }
+            },
+            offset_xy=(100.0, 50.0),
+        )
+        self.assertEqual(len(dets), 1)
+        self.assertEqual(dets[0]["text"], "HATS")
+        self.assertEqual(dets[0]["bbox"], [101.0, 52.0, 111.0, 58.0])
+        self.assertEqual(
+            dets[0]["polygon"],
+            [[101.0, 52.0], [111.0, 52.0], [111.0, 58.0], [101.0, 58.0]],
+        )
+
+    def test_enrich_text_from_sign_crops(self) -> None:
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import numpy as np
+
+        from detection.text.client import enrich_text_from_sign_crops
+
+        frame = np.zeros((200, 300, 3), dtype=np.uint8)
+        detections = [
+            {
+                "track_id": "s-1",
+                "label": "sign",
+                "score": 0.16,
+                "bbox": [10.0, 20.0, 110.0, 80.0],
+                "entity_type": "sign",
+            },
+            {
+                "track_id": "t-0",
+                "label": "text",
+                "score": 0.5,
+                "bbox": [0.0, 0.0, 5.0, 5.0],
+                "entity_type": "text",
+                "text": "OLD",
+            },
+        ]
+        fake_ocr = {
+            "result": {
+                "ocrResults": [
+                    {
+                        "prunedResult": {
+                            "rec_texts": ["STETSON"],
+                            "rec_scores": [0.88],
+                            "dt_polys": [
+                                [[2, 3], [40, 3], [40, 20], [2, 20]],
+                            ],
+                        }
+                    }
+                ]
+            }
+        }
+
+        mock_resp = MagicMock()
+        mock_resp.raise_for_status = MagicMock()
+        mock_resp.json.return_value = fake_ocr
+        client = AsyncMock()
+        client.post = AsyncMock(return_value=mock_resp)
+
+        with patch.dict(
+            "os.environ",
+            {
+                "ENABLE_SCENE_OCR": "true",
+                "SCENE_OCR_FROM_SIGNS": "true",
+                "SCENE_OCR_SIGN_MIN_SCORE": "0.1",
+            },
+        ):
+            # Re-read flags from patched env by calling through module attrs
+            # already loaded — patch module-level constants instead.
+            import detection.text.client as text_client
+
+            with patch.object(text_client, "ENABLE_SCENE_OCR", True), patch.object(
+                text_client, "SCENE_OCR_FROM_SIGNS", True
+            ), patch.object(text_client, "SCENE_OCR_SIGN_MIN_SCORE", 0.1):
+                asyncio.run(
+                    enrich_text_from_sign_crops(
+                        client, frame, detections, lambda _f: b"jpeg"
+                    )
+                )
+
+        texts = [d for d in detections if d.get("entity_type") == "text"]
+        self.assertGreaterEqual(len(texts), 2)
+        stetson = next(d for d in texts if d.get("text") == "STETSON")
+        self.assertEqual(stetson.get("source"), "sign_crop")
+        self.assertEqual(stetson.get("sign_track_id"), "s-1")
+        # Crop origin (10, 20) + local (2, 3)
+        self.assertEqual(stetson["bbox"][0], 12.0)
+        self.assertEqual(stetson["bbox"][1], 23.0)
+        self.assertTrue(all(str(d["track_id"]).startswith("t-") for d in texts))
 
     def test_signs_ov_collapse_label(self) -> None:
         from detection.signs import normalize_signs_result

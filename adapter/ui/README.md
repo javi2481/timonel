@@ -5,10 +5,10 @@
 UI de Timonel (Vite/React) servida por el adapter + placeholder de preview.
 Abrís `http://localhost:8000/`; el adapter redirige `/` → `/app/`.
 
-Empty-state: elegí una foto del **selector** (lista de `imagenes_muestra`,
-viene con el clone) o **Subir foto** para una imagen tuya. Con el stack
+Empty-state: **Subir foto** para analizar una imagen. Con el stack
 default (`full_up` / `docker compose up`) las capas ya están activas; click
 en una capa verde con hits muestra/oculta cajas (tilde = visible).
+Las demos de `imagenes_muestra/` siguen en el repo para smokes / pruebas.
 
 ## Cómo funciona
 

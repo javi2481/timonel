@@ -57,6 +57,7 @@ from detection.common.zones import (
 )
 from detection.objects import infer_objects_tiled_sync
 from detection.plates import enrich_vehicles_with_plates
+from detection.text import enrich_text_from_sign_crops
 from detection.registry import (
     CAPABILITIES,
     Capability,
@@ -470,6 +471,11 @@ async def run_detections(
     # Plate OCR remains ENABLE-only enrich (unchanged); not SPA-gated.
     await enrich_vehicles_with_plates(
         client, frame_hires, vehicle_detections, encode_jpeg
+    )
+
+    # Scene OCR sobre crops de sign (tras merge; coords ya en hires).
+    await enrich_text_from_sign_crops(
+        client, frame_hires, detections, encode_jpeg
     )
 
     # NMS-B cross-cap (capa B): entity_type via class_id_for_cross_cap_nms.

@@ -244,19 +244,24 @@ class TestRunDetectionsLifecycleHook(unittest.IsolatedAsyncioTestCase):
                     ):
                         with patch.object(
                             bridge_main,
-                            "draw_preview",
-                            return_value=b"jpeg",
+                            "enrich_text_from_sign_crops",
+                            new=AsyncMock(),
                         ):
                             with patch.object(
                                 bridge_main,
-                                "encode_jpeg",
-                                return_value=b"raw",
+                                "draw_preview",
+                                return_value=b"jpeg",
                             ):
-                                dets, degraded, _ = await bridge_main.run_detections(
-                                    AsyncMock(),
-                                    frame,
-                                    lifecycle=TrackingLife(),  # type: ignore[arg-type]
-                                )
+                                with patch.object(
+                                    bridge_main,
+                                    "encode_jpeg",
+                                    return_value=b"raw",
+                                ):
+                                    dets, degraded, _ = await bridge_main.run_detections(
+                                        AsyncMock(),
+                                        frame,
+                                        lifecycle=TrackingLife(),  # type: ignore[arg-type]
+                                    )
         self.assertFalse(degraded)
         self.assertIsNotNone(dets)
         self.assertTrue(any("vehicles" in c or "objects" in c for c in calls))
