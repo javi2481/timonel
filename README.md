@@ -14,7 +14,7 @@ arranacan **todas** las capacidades del stack default.
 
 ![Panel de Timonel](assets/panel.png)
 
-<p align="center"><sub>Varias capacidades PaddleX orquestadas sobre una sola foto: objetos, caras y pose unificados en un flujo de eventos.</sub></p>
+<p align="center"><sub>Selector de demos del repo, capas con tilde de visibilidad y overlays PaddleX sobre una sola foto.</sub></p>
 
 ## Prerrequisitos
 
