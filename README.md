@@ -20,7 +20,9 @@ arranacan **todas** las capacidades del stack default.
 
 - Docker Desktop / Engine + Compose v2
 - ~16+ GB RAM libres recomendados (varios contenedores PaddleX ~2 GB c/u)
-- Red la primera vez (descarga de imágenes/modelos; puede tardar varios minutos)
+- Red la primera vez solo para **imágenes Docker y pesos PaddleX** (puede
+  tardar varios minutos). Las fotos de `imagenes_muestra/` **ya vienen en el
+  clone** — no hace falta buscarlas en internet.
 
 No hace falta Node ni Python en el host para la UI. El `.env` es **opcional**
 (Compose ya fuerza `ENABLE_*=true` en adapter/bridge).
@@ -38,7 +40,7 @@ chmod +x scripts/full_up.sh && ./scripts/full_up.sh
 Equivale a `docker compose up -d --build --wait`: todos los `tm-paddlex-*`
 del stack default + adapter + bridge. En la UI las capas arrancan **activas**
 (verdes cuando healthy). Click en una capa verde con hits → mostrar/ocultar
-cajas en el canvas.
+cajas en el canvas (tilde = visible).
 
 On-demand (start/stop idle) queda como override avanzado:
 `compose.ondemand.yml` + `ENABLE_CONTAINER_LIFECYCLE`.
@@ -46,9 +48,10 @@ On-demand (start/stop idle) queda como override avanzado:
 
 Abrí [http://localhost:8000/](http://localhost:8000/) (redirige a `/app/`).
 
-1. En el selector elegí una `demo_*.jpg` o subí una foto.
+1. En el **selector** elegí una foto de `imagenes_muestra` (vienen con el
+   clone) o usá **Subir foto** para una imagen tuya.
 2. Esperá overlays / eventos (cold start de modelos puede tardar minutos).
-3. Tocá capas verdes para ocultar/mostrar detecciones en el canvas.
+3. Tocá capas verdes (tilde) para ocultar/mostrar detecciones en el canvas.
 
 | | |
 |--|--|
@@ -67,9 +70,11 @@ Progreso: `docker compose ps` · `docker compose logs -f bridge`
 
 ## Demos versionadas
 
-En [`imagenes_muestra/`](imagenes_muestra/) hay `demo_*.jpg` con licencia
-redistribuible (ver `LICENSE.md`). El manifiesto indica `requires: core|full`
-(histórico); con el stack default todas las capas están arriba.
+En [`imagenes_muestra/`](imagenes_muestra/) están las fotos de prueba
+(`demo_*.jpg` y `fo_*.jpg`) **commiteadas**: un `git clone` las trae al disco.
+No hace falta `fetch_demo_images.py` ni buscar en internet para probar.
+El manifiesto marca `requires: core|full` como metadata histórica de contenido;
+con el stack default todas las capas están arriba.
 
 ## Qué hace
 

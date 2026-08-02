@@ -10,13 +10,14 @@ venv/
 .DS_Store
 *.log
 
-# Muestras locales de imagen (overlay-preview) — pesadas, no versionar.
-# Ignore contents (not the dir itself) so README / demos can be force-included.
+# Muestras en imagenes_muestra/: versionar fotos de onboarding (demo_* + fo_*).
+# Ignore contents (not the dir itself) so meta + JPGs can be force-included.
 imagenes_muestra/*
 !imagenes_muestra/README.md
 !imagenes_muestra/LICENSE.md
 !imagenes_muestra/manifest_demo.json
 !imagenes_muestra/demo_*.jpg
+!imagenes_muestra/fo_*.jpg
 
 # Skill registry local (rutas de máquina del desarrollador).
 .atl/

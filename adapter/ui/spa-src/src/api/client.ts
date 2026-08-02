@@ -79,6 +79,32 @@ export async function clearMedia(): Promise<ClearResponse> {
   return asJson<ClearResponse>(res);
 }
 
+export async function listMedia(): Promise<MediaItem[]> {
+  const res = await fetch("/media/list");
+  const body = await asJson<{ items: MediaItem[] }>(res);
+  return Array.isArray(body.items) ? body.items : [];
+}
+
+export interface SelectMediaResponse {
+  ok: boolean;
+  name?: string;
+  generation?: number;
+  error?: string;
+}
+
+export async function selectMedia(name: string): Promise<SelectMediaResponse> {
+  const res = await fetch("/media/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  const body = await asJson<SelectMediaResponse>(res);
+  if (!res.ok) {
+    return { ok: false, error: body.error || `select failed (${res.status})` };
+  }
+  return body;
+}
+
 /** URL directa para <img src>; `generation` en query evita reusar caché intermedia. */
 export function originalMediaUrl(generation?: number): string {
   return generation === undefined

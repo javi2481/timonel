@@ -14,7 +14,7 @@ import { UploadBar } from "./components/UploadBar";
 import { useSession } from "./state/session";
 
 export function App() {
-  const { state, upload, clear, retry } = useSession();
+  const { state, upload, select, clear, retry } = useSession();
   const [visibility, setVisibility] = useState<Record<string, boolean>>({});
   const [catalog, setCatalog] = useState<Record<string, CapabilityEntry>>({});
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -123,7 +123,9 @@ export function App() {
         </div>
         <UploadBar
           status={state.status}
+          mediaName={state.mediaName}
           errorMessage={state.errorMessage}
+          onSelect={(name) => void select(name)}
           onUpload={(file) => void upload(file)}
           onClear={() => void clear()}
           onRetry={retry}
@@ -172,8 +174,9 @@ export function App() {
               <div className="tm-stage-idle-inner">
                 <h2 className="tm-stage-idle-title">Timonel</h2>
                 <p className="tm-stage-idle-copy">
-                  Subí tu foto para que PaddleX la analice. Las capas quedan
-                  activas; vos elegís cuáles mostrar en la imagen.
+                  Elegí una foto del selector (vienen con el clone en
+                  imagenes_muestra) o subí la tuya. Las capas quedan activas; vos
+                  elegís cuáles mostrar en la imagen.
                 </p>
               </div>
             </div>

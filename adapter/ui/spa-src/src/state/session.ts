@@ -15,6 +15,7 @@ import {
   clearMedia,
   getCurrentMedia,
   getEvents,
+  selectMedia,
   uploadMedia,
   type EventsEnvelope,
 } from "../api/client";
@@ -190,6 +191,47 @@ export function useSession() {
     [startPolling],
   );
 
+  const select = useCallback(
+    async (name: string) => {
+      if (!name) return;
+      setState((prev) => ({
+        ...prev,
+        status: "uploading",
+        errorMessage: null,
+        events: [],
+      }));
+      processingSinceRef.current = Date.now();
+      try {
+        const res = await selectMedia(name);
+        if (!res.ok || res.generation === undefined) {
+          setState((prev) => ({
+            ...prev,
+            status: "error",
+            errorMessage: res.error || "No se pudo seleccionar la foto",
+          }));
+          return;
+        }
+        const generation = res.generation;
+        generationRef.current = generation;
+        setState((prev) => ({
+          ...prev,
+          status: "processing",
+          mediaName: res.name ?? name,
+          generation,
+          events: [],
+        }));
+        startPolling();
+      } catch (err) {
+        setState((prev) => ({
+          ...prev,
+          status: "error",
+          errorMessage: err instanceof Error ? err.message : "Error de red",
+        }));
+      }
+    },
+    [startPolling],
+  );
+
   const clear = useCallback(async () => {
     stopPolling();
     try {
@@ -211,5 +253,5 @@ export function useSession() {
     startPolling();
   }, [startPolling]);
 
-  return { state, upload, clear, retry };
+  return { state, upload, select, clear, retry };
 }
