@@ -1,7 +1,7 @@
 # Override: GPU vehicles serving. Uso:
-#   docker compose -f docker-compose.yml -f compose.gpu.yml --profile full up --build
+#   docker compose -f docker-compose.yml -f compose.gpu.yml up --build
 #
-# Sustituye el servicio paddlex (profile full en el compose base) por imagen/runtime NVIDIA.
+# Sustituye el servicio paddlex (vehicles) del compose base por imagen/runtime NVIDIA.
 # Requiere NVIDIA Container Toolkit. No publica un segundo servicio en :8080.
 services:
   paddlex:

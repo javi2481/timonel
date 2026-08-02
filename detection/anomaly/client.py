@@ -1,4 +1,4 @@
-"""Scaffold anomaly_detection (experimental). GATE: ver README."""
+"""Cliente HTTP anomaly_detection. Dominio: ver README."""
 
 from __future__ import annotations
 

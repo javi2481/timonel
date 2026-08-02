@@ -13,7 +13,7 @@ misma suite en `.github/workflows/ci.yml`.
 | Unitarios | `tests/test_*.py` sin modelos PaddleX | sí |
 | Compose onboarding | `test_compose_onboarding.py` + `compose config` | sí |
 | SPA build | `npm ci && npm run build` en `adapter/ui/spa-src` | sí |
-| Smoke onboarding | `scripts/smoke_onboarding.py` (stack core) | manual |
+| Smoke onboarding | `scripts/smoke_onboarding.py` (stack default / `full_up`) | manual |
 | Smoke core fo_* | `scripts/smoke_core_stack.py` | manual |
 | Eval PaddleX | `scripts/eval_paddlex_fixtures.py` | no |
 

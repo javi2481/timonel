@@ -6,7 +6,7 @@ OCR opcional de patentes sobre crops de vehículos ya detectados.
 
 ## Cómo funciona
 
-1. Gate `ENABLE_PLATE_OCR` (default off).
+1. Gate `ENABLE_PLATE_OCR` (true en Compose producto).
 2. Toma top-K vehículos con `score > OCR_MIN_SCORE`.
 3. Recorta bbox en `frame_hires` → JPEG → POST `/ocr`.
 4. Filtra textos con regex 5–8 alfanuméricos; merge en `d["plate"]`.

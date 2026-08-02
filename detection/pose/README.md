@@ -6,7 +6,7 @@ Keypoints / pose humana vía PaddleX `human_keypoint_detection`.
 
 ## Cómo funciona
 
-1. `ENABLE_POSE=true` + servicio `paddlex-pose` (profile `extended`).
+1. `ENABLE_POSE=true` + servicio `paddlex-pose` (stack default / Compose).
 2. `infer_pose` → dets `entity_type:"pose"` con `keypoints` y track `k-*`.
 
 ## Entrada / salida
@@ -18,7 +18,7 @@ Keypoints / pose humana vía PaddleX `human_keypoint_detection`.
 
 | Item | Valor |
 |------|--------|
-| Compose | `paddlex-pose` `:8086` (profile `extended`) |
+| Compose | `paddlex-pose` `:8086` (stack default) |
 | Env | `ENABLE_POSE`, `PADDLEX_POSE_URL` |
 
 ## Archivos clave

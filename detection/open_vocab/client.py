@@ -1,4 +1,4 @@
-"""Scaffold open-vocabulary detection (experimental). GATE: ver README."""
+"""Cliente HTTP open-vocabulary detection. Ver README."""
 
 from __future__ import annotations
 

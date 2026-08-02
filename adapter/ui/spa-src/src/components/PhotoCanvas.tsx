@@ -31,7 +31,7 @@ interface Props {
   status: SessionStatus;
   errorMessage: string | null;
   onRetry: () => void;
-  availableCapCount: number;
+  onImageLoaded: (loaded: boolean) => void;
 }
 
 function contrastInk(hex: string): string {
@@ -104,9 +104,14 @@ export function PhotoCanvas({
   status,
   errorMessage,
   onRetry,
-  availableCapCount,
+  onImageLoaded,
 }: Props) {
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
+
+  useEffect(() => {
+    setNaturalSize(null);
+    onImageLoaded(false);
+  }, [generation, onImageLoaded]);
 
   const visibleEntries = events
     .map((event, index) => ({ event, index, id: eventId(event, index), bbox: eventBbox(event) }))
@@ -126,6 +131,11 @@ export function PhotoCanvas({
             onLoad={(e) => {
               const img = e.currentTarget;
               setNaturalSize({ w: img.naturalWidth, h: img.naturalHeight });
+              onImageLoaded(true);
+            }}
+            onError={() => {
+              setNaturalSize(null);
+              onImageLoaded(false);
             }}
           />
           {naturalSize && (
@@ -307,18 +317,6 @@ export function PhotoCanvas({
           {status === "degraded" && (
             <div className="tm-banner">PaddleX no disponible — mostrando lo detectado</div>
           )}
-          {status === "processing" && (
-            <div className="tm-overlay tm-overlay-proc">
-              <div>
-                <div className="tm-spinner" />
-                <div className="tm-overlay-msg">Analizando imagen…</div>
-                <div className="tm-overlay-sub">
-                  {availableCapCount} capacidad{availableCapCount === 1 ? "" : "es"} disponible
-                  {availableCapCount === 1 ? "" : "s"}
-                </div>
-              </div>
-            </div>
-          )}
           {status === "empty" && (
             <div className="tm-overlay">
               <div className="tm-empty-card">
@@ -345,9 +343,6 @@ export function PhotoCanvas({
               naturalSize={naturalSize}
               onClose={() => onSelect(null)}
             />
-          )}
-          {!naturalSize && status !== "error" && (
-            <div className="tm-canvas-loading">Cargando foto…</div>
           )}
         </div>
       </div>

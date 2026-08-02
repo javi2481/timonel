@@ -8,19 +8,16 @@ Fotos `demo_*.jpg` **commiteadas** para probar sin FiftyOne ni buscar imágenes.
 
 | | |
 |--|--|
-| Manifiesto | [`manifest_demo.json`](manifest_demo.json) (`requires`: `core` \| `full`) |
+| Manifiesto | [`manifest_demo.json`](manifest_demo.json) (`requires`: `core` \| `full` — metadata histórica) |
 | Atribución | [`LICENSE.md`](LICENSE.md) |
 | Regenerar | `python scripts/fetch_demo_images.py` |
 
-### Andan en core (`requires: core`)
+Con el stack default (`scripts/full_up` / `docker compose up`) **todas** las
+capas SPA están arriba (objects, faces, OCR, pose, vehicles, …). Las demos
+`requires: full` (texto/fachada) ya no necesitan un profile aparte.
 
-Calle / personas / escena — útiles con objects + faces del default Compose.
-Ejemplo: `demo_01_street.jpg`.
-
-### Piden full (`requires: full`)
-
-Texto / fachada — necesitan OCR (`--profile full` + flags de `.env.full.example`).
-Sin full parecen “vacías”; no es un bug del core.
+El campo `requires` en el manifiesto se conserva como etiqueta de contenido
+(qué capas aportan más a esa foto), no como requisito de Compose.
 
 ## Layout (eval, gitignored)
 
@@ -35,12 +32,15 @@ Los JPG de eval (`fo_*`) siguen en `.gitignore`. No mezclar nombres `demo_*` / `
 
 ## Harness de accuracy (gate local — no CI)
 
+Los packs `core` / `extended` / `experimental` de los scripts de eval son
+**taxonomía de medición**, no perfiles Compose.
+
 ```bash
 python -m pip install -r scripts/requirements-eval.txt
 PYTHONPATH=. python scripts/download_paddlex_eval.py --packs core --out imagenes_muestra
 PYTHONPATH=. python scripts/eval_paddlex_fixtures.py --packs core --out imagenes_muestra
 python scripts/smoke_core_stack.py   # integración fo_* (no onboarding)
-python scripts/smoke_onboarding.py   # demo_* versionadas
+python scripts/smoke_onboarding.py   # demo_* versionadas (stack default arriba)
 ```
 
 ## Thrash del media-watch

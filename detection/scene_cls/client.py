@@ -1,7 +1,4 @@
-"""Scaffold image_classification (profile experimental).
-
-GATE: regla de producto escrita + estimación RAM/latencia antes de ENABLE_SCENE_CLS=true.
-"""
+"""Cliente HTTP image_classification (scene_cls). Ver README."""
 
 from __future__ import annotations
 

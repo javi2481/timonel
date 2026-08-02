@@ -7,7 +7,7 @@ carriles y cruces peatonales (según pesos / modo).
 
 ## Cómo funciona
 
-1. `ENABLE_SCENE_SEG=true` + profile `extended`.
+1. `ENABLE_SCENE_SEG=true` (Compose default) + servicio `paddlex-scene`.
 2. `infer_scene` → `labelMap` → ratios / heurística.
 3. Emite det `scene-0`.
 4. Modos `SCENE_LABEL_MODE`:
@@ -25,7 +25,7 @@ carriles y cruces peatonales (según pesos / modo).
 
 | Item | Valor |
 |------|--------|
-| Compose | `paddlex-scene` (profile `extended`) |
+| Compose | `paddlex-scene` (stack default) |
 | Puerto | `8085` |
 | Env | `ENABLE_SCENE_SEG`, `SCENE_LABEL_MODE`, `SCENE_PIPELINE_CONFIG`, `CROSSWALK_MIN_RATIO` |
 

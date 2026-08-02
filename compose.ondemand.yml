@@ -1,0 +1,48 @@
+# Override AVANZADO: on-demand start/stop de capas extended vía Docker Engine API.
+# El camino de producto es scripts/full_up (todas las caps up). Este override
+# solo si querés idle-stop para liberar RAM.
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f compose.ondemand.yml up -d --build
+#
+# Monta docker.sock en bridge (el compose default no lo monta).
+
+services:
+  # ENABLE=* true por si el .env local las apaga.
+  adapter:
+    environment:
+      ENABLE_VEHICLES: "true"
+      ENABLE_FACE_DETECTION: "true"
+      ENABLE_POSE: "true"
+      ENABLE_SCENE_OCR: "true"
+      ENABLE_PEDESTRIAN_ATTRS: "true"
+      ENABLE_SCENE_SEG: "true"
+      ENABLE_FACE_ID: "true"
+      ENABLE_SIGNS: "true"
+      ENABLE_SCENE_CLS: "true"
+      ENABLE_INSTANCE_SEG: "true"
+      ENABLE_SMALL_OBJECTS: "true"
+      ENABLE_ANOMALY: "true"
+      ENABLE_OPEN_VOCAB: "true"
+
+  bridge:
+    environment:
+      - ENABLE_CONTAINER_LIFECYCLE=true
+      - CONTAINER_IDLE_PAUSE_S=${CONTAINER_IDLE_PAUSE_S:-120}
+      - DOCKER_SOCK=/var/run/docker.sock
+      # registry=container_name; lifecycle nunca stop de objects/faces/pose/ocr/vehicles
+      - LIFECYCLE_PAUSE_CAPS=pedestrians=tm-paddlex-pedestrians,face_id=tm-paddlex-face-id,scene=tm-paddlex-scene,scene_cls=tm-paddlex-scene-cls,instances=tm-paddlex-instances,small_objects=tm-paddlex-small-objects,anomaly=tm-paddlex-anomaly,open_vocab=tm-paddlex-open-vocab,signs=tm-paddlex-open-vocab
+      - ENABLE_SCENE_SEG=true
+      - ENABLE_FACE_ID=true
+      - ENABLE_SIGNS=true
+      - ENABLE_SCENE_CLS=true
+      - ENABLE_INSTANCE_SEG=true
+      - ENABLE_SMALL_OBJECTS=true
+      - ENABLE_ANOMALY=true
+      - ENABLE_OPEN_VOCAB=true
+      - ENABLE_PEDESTRIAN_ATTRS=true
+    volumes:
+      - ./detection:/app/detection:ro
+      - ./bridge:/app/bridge:ro
+      - ./imagenes_muestra:/media/images:ro
+      - /var/run/docker.sock:/var/run/docker.sock

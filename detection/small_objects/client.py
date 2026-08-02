@@ -1,4 +1,4 @@
-"""Scaffold small_object_detection (experimental). GATE: ver README."""
+"""Cliente HTTP small_object_detection. Dominio aéreo: ver README."""
 
 from __future__ import annotations
 

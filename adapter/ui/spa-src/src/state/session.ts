@@ -39,7 +39,8 @@ export interface SessionState {
 }
 
 const POLL_INTERVAL_MS = 1000;
-const PROCESSING_TIMEOUT_MS = 60_000;
+/** Incluye margen de cold start PaddleX multi-cap (~start_period 300s). */
+const PROCESSING_TIMEOUT_MS = 300_000;
 
 const initialState: SessionState = {
   status: "idle",
@@ -96,7 +97,7 @@ export function useSession() {
         setState((prev) => ({
           ...prev,
           status: "error",
-          errorMessage: "Timeout esperando análisis (60s). Reintentar.",
+          errorMessage: "Timeout esperando análisis (5 min). Reintentar.",
           generation: envelope.generation,
           lastIngestGeneration: envelope.last_ingest_generation,
           events: envelope.events,
@@ -133,24 +134,22 @@ export function useSession() {
     pollTimer.current = setInterval(() => void pollOnce(), POLL_INTERVAL_MS);
   }, [pollOnce, stopPolling]);
 
-  // Bootstrap: si ya hay una foto activa (watcher del adapter la
-  // auto-selecciona), arrancar en "processing" y empezar a sondear.
+  // Bootstrap: siempre idle (no resume). Solo clear si hay foto residual.
   useEffect(() => {
     void (async () => {
       try {
         const current = await getCurrentMedia();
         generationRef.current = current.generation;
-        if (current.name) {
-          setState((prev) => ({
-            ...prev,
-            status: "processing",
-            mediaName: current.name,
-            generation: current.generation,
-          }));
-          startPolling();
+        if (!current.name) {
+          setState({ ...initialState, generation: current.generation });
+          return;
         }
+        const res = await clearMedia();
+        generationRef.current = res.generation;
+        processingSinceRef.current = null;
+        setState({ ...initialState, generation: res.generation });
       } catch {
-        // Sin conexión inicial: se queda en idle: el usuario puede subir.
+        // Sin conexión / clear falló: se queda en idle; el usuario puede subir.
       }
     })();
     return () => stopPolling();

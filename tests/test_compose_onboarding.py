@@ -1,4 +1,4 @@
-"""Onboarding compose: CORE default vs profile full."""
+"""Onboarding compose: default stack = all SPA PaddleX caps."""
 
 from __future__ import annotations
 
@@ -9,6 +9,24 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+DEFAULT_SERVICES = {
+    "adapter",
+    "bridge",
+    "paddlex",
+    "paddlex-objects",
+    "paddlex-faces",
+    "paddlex-ocr",
+    "paddlex-pose",
+    "paddlex-pedestrians",
+    "paddlex-scene",
+    "paddlex-face-id",
+    "paddlex-scene-cls",
+    "paddlex-instances",
+    "paddlex-small-objects",
+    "paddlex-anomaly",
+    "paddlex-open-vocab",
+}
 
 
 def _docker_compose_available() -> bool:
@@ -63,51 +81,18 @@ def _host_ports(published: object) -> list[str]:
 
 @unittest.skipUnless(_docker_compose_available(), SKIP_REASON)
 class TestComposeOnboarding(unittest.TestCase):
-    def test_default_services_are_core_only(self) -> None:
+    def test_default_services_include_all_spa_paddlex(self) -> None:
         proc = _compose("config", "--services")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         services = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
-        self.assertEqual(
-            services,
-            {"adapter", "bridge", "paddlex-objects", "paddlex-faces"},
-        )
-
-    def test_full_profile_includes_hot_paddlex(self) -> None:
-        env_full = ROOT / ".env.full.example"
-        self.assertTrue(env_full.is_file(), ".env.full.example missing")
-        proc = _compose(
-            "--profile",
-            "full",
-            "--env-file",
-            str(env_full),
-            "config",
-            "--services",
-        )
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        services = {line.strip() for line in proc.stdout.splitlines() if line.strip()}
-        required = {
-            "paddlex",
-            "paddlex-ocr",
-            "paddlex-pose",
-            "paddlex-objects",
-            "paddlex-faces",
-            "adapter",
-            "bridge",
-        }
-        missing = required - services
+        missing = DEFAULT_SERVICES - services
         self.assertFalse(missing, f"missing {missing}; got {services}")
+        # Profile-only services stay out of default.
+        self.assertNotIn("bridge-demo", services)
+        self.assertNotIn("paddlex-signs", services)
 
-    def test_full_config_has_no_duplicate_host_ports(self) -> None:
-        env_full = ROOT / ".env.full.example"
-        proc = _compose(
-            "--profile",
-            "full",
-            "--env-file",
-            str(env_full),
-            "config",
-            "--format",
-            "json",
-        )
+    def test_default_config_has_no_duplicate_host_ports(self) -> None:
+        proc = _compose("config", "--format", "json")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         cfg = json.loads(proc.stdout)
         host_ports: list[str] = []
@@ -126,7 +111,7 @@ class TestComposeOnboarding(unittest.TestCase):
         self.assertNotIn(
             "docker.sock",
             serialized,
-            "bridge must not mount docker.sock in default CORE config",
+            "bridge must not mount docker.sock in default config",
         )
 
 

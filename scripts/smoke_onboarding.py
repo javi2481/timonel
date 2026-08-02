@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Smoke onboarding: UI + demo core image → events/preview (sin fo_*).
+"""Smoke onboarding: UI + demo image → events/preview (sin fo_*).
 
-Uso (stack core arriba):
+Uso (stack default arriba — scripts/full_up o docker compose up):
 
     python scripts/smoke_onboarding.py
     python scripts/smoke_onboarding.py --ui-only

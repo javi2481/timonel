@@ -31,11 +31,12 @@ Imagen Docker compartida de PaddleX y su entrypoint. Los servicios
 ### Procedimiento de upgrade
 
 1. Bump del pin en `infra/Dockerfile.paddlex` (`paddlex[cv,serving,ocr]==X.Y.Z`).
-2. Rebuild: `docker compose build paddlex paddlex-ocr paddlex-objects`
-   (o `docker compose build` para todo el perfil que uses).
-3. Smoke: `docker compose up` levanta las 13 capacidades. Verificar `/docs` u
-   `/openapi.json` de cada servicio (ver healthchecks en `docker-compose.yml`)
-   y correr `scripts/smoke_extended.sh` antes de aceptar el bump.
+2. Rebuild: `docker compose build` (o servicios puntuales, p. ej.
+   `paddlex paddlex-ocr paddlex-objects`).
+3. Smoke: `docker compose up` / `scripts/full_up` levanta las capacidades SPA.
+   Verificar `/docs` u `/openapi.json` de cada servicio (healthchecks en
+   `docker-compose.yml`) y correr `scripts/smoke_extended.sh` antes de aceptar
+   el bump.
 4. Confirmar especialmente que el pipeline OCR (`ocr_v5_mobile.yaml`) sigue
    sirviendo sin error de PIR/versión — es el punto de fricción conocido.
 5. Recién ahí, commitear el bump del pin.
@@ -70,7 +71,7 @@ Probar **por servicio** (no hace falta activarlo en todos).
 ### GPU
 
 ```bash
-docker compose --profile gpu up --build
+docker compose -f docker-compose.yml -f compose.gpu.yml up --build
 ```
 
 Usar `PADDLE_GPU_BASE_IMAGE` y, si aplica, backends `trt_fp16` vía config HPI.

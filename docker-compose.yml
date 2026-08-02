@@ -2,29 +2,26 @@
 # Orquestar, no inventar. Un solo comando: docker compose up --build
 #
 # Perfiles:
-#   (default)        core minimo: paddlex-objects + paddlex-faces + adapter + bridge
-#                    (deteccion de objetos/personas + rostros; sin vehiculos/ocr/pose)
-#   --profile full   agrega el resto de capacidades PaddleX: paddlex (vehiculos),
-#                    paddlex-ocr, paddlex-pose, paddlex-pedestrians, paddlex-scene,
-#                    paddlex-face-id, paddlex-scene-cls, paddlex-instances,
-#                    paddlex-small-objects, paddlex-anomaly, paddlex-open-vocab
-#                    (signs via open-vocab, SIGNS_BACKEND=ov)
+#   (default)        Todas las capas PaddleX SPA + adapter + bridge
+#                    (objects, faces, pose, ocr, vehicles, pedestrians, scene,
+#                     face-id, scene-cls, instances, small-objects, anomaly, open-vocab)
 #   --profile legacy-signs   paddlex-signs :8088 (rollback COCO; producto usa open-vocab)
 #   --profile demo           bridge-demo en DEMO_MODE (sin fotos reales, sin GPU)
 #                            CAVEAT: bridge-demo no habla con ningun paddlex-*, solo
 #                            ejercita adapter (ingest/health) para smoke tests/demos.
 #   --profile rules          JetLinks + rules-sink (webhooks/reglas), opcional
 #
-# GPU: no hay servicio paddlex-gpu en este archivo. Para correr "paddlex" (vehiculos,
-# profile full) con runtime NVIDIA, usar el override compose.gpu.yml:
-#   docker compose -f docker-compose.yml -f compose.gpu.yml --profile full up --build
+# GPU: override compose.gpu.yml para el servicio vehicles (paddlex):
+#   docker compose -f docker-compose.yml -f compose.gpu.yml up --build
 # (requiere NVIDIA Container Toolkit)
+#
+# On-demand (avanzado): compose.ondemand.yml + ENABLE_CONTAINER_LIFECYCLE.
 #
 # RAM (mem_limit por contenedor paddlex):
 #   Techo ~2g por contenedor (x-limits-paddlex). Default pensado para CPU.
 #   Si un servicio OOMKilled, sube su mem_limit o baja BRIDGE_MAX_WIDTH.
 #
-# Layout: detection/* + bridge + adapter. Ver README.md (activo vs activable).
+# Layout: detection/* + bridge + adapter. Ver README.md.
 
 name: timonel
 
@@ -63,7 +60,7 @@ networks:
     name: timonel-network
 
 services:
-  # --- CORE (default, sin profile) ---
+  # --- Default stack: objects + faces ---
 
   # Object detection COCO (person, dog, ...). Merge en detection/objects.
   paddlex-objects:
@@ -104,10 +101,9 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8083/docs || curl -fsS http://127.0.0.1:8083/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # --- FULL (docker compose --profile full up) ---
+  # --- Default stack: pose / OCR / vehicles ---
 
   paddlex:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex:local
     container_name: tm-paddlex
@@ -123,7 +119,6 @@ services:
       <<: *paddlex-health
 
   paddlex-ocr:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-ocr:local
     container_name: tm-paddlex-ocr
@@ -140,8 +135,9 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8081/docs || curl -fsS http://127.0.0.1:8081/openapi.json || exit 1"]
       <<: *paddlex-health
 
+  # --- Extended (default stack — all caps up for product testing) ---
+
   paddlex-pedestrians:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-pedestrians:local
     container_name: tm-paddlex-pedestrians
@@ -159,7 +155,6 @@ services:
       <<: *paddlex-health
 
   paddlex-scene:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-scene:local
     container_name: tm-paddlex-scene
@@ -177,7 +172,6 @@ services:
       <<: *paddlex-health
 
   paddlex-pose:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-pose:local
     container_name: tm-paddlex-pose
@@ -195,7 +189,6 @@ services:
       <<: *paddlex-health
 
   paddlex-face-id:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-face-id:local
     container_name: tm-paddlex-face-id
@@ -215,7 +208,6 @@ services:
       <<: *paddlex-health
 
   paddlex-scene-cls:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-scene-cls:local
     container_name: tm-paddlex-scene-cls
@@ -235,7 +227,6 @@ services:
       <<: *paddlex-health
 
   paddlex-instances:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-instances:local
     container_name: tm-paddlex-instances
@@ -254,7 +245,6 @@ services:
 
   # Preferi ENABLE_INFER_TILING antes que esto para objetos chicos.
   paddlex-small-objects:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-small-objects:local
     container_name: tm-paddlex-small-objects
@@ -272,7 +262,6 @@ services:
       <<: *paddlex-health
 
   paddlex-anomaly:
-    profiles: ["full"]
     <<: [*paddlex-cpu, *limits-paddlex]
     image: timonel/paddlex-anomaly:local
     container_name: tm-paddlex-anomaly
@@ -292,7 +281,6 @@ services:
   # Tambien sirve signs via open-vocab (SIGNS_BACKEND=ov). Build con extras
   # multimodal (necesarios para open-vocabulary-detection / YOLO-World).
   paddlex-open-vocab:
-    profiles: ["full"]
     <<: [*limits-paddlex]
     build:
       context: .
@@ -322,7 +310,7 @@ services:
       <<: *paddlex-health
 
   # --- LEGACY-SIGNS (rollback COCO signs :8088) ---
-  # Producto usa paddlex-open-vocab :8093 (SIGNS_BACKEND=ov, profile full).
+  # Producto usa paddlex-open-vocab :8093 (SIGNS_BACKEND=ov).
   # Ver detection/signs/README.
   paddlex-signs:
     profiles: ["legacy-signs"]
@@ -342,7 +330,7 @@ services:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8088/docs || curl -fsS http://127.0.0.1:8088/openapi.json || exit 1"]
       <<: *paddlex-health
 
-  # --- CORE (default, sin profile) ---
+  # --- Adapter + bridge ---
 
   adapter:
     build:
@@ -370,21 +358,21 @@ services:
       - MEDIA_POLL_INTERVAL=${MEDIA_POLL_INTERVAL:-1.0}
       - MEDIA_WATCH_INTERVAL=${MEDIA_WATCH_INTERVAL:-1.0}
       - PREVIEW_MJPEG_INTERVAL=${PREVIEW_MJPEG_INTERVAL:-0.05}
-      # Mirror SPA-relevant ENABLE_* onto adapter (same defaults as bridge).
-      # object/face son core (siempre disponibles); el resto es opt-in (profile full).
-      - ENABLE_VEHICLES=${ENABLE_VEHICLES:-false}
-      - ENABLE_FACE_DETECTION=${ENABLE_FACE_DETECTION:-true}
-      - ENABLE_SCENE_SEG=${ENABLE_SCENE_SEG:-false}
-      - ENABLE_POSE=${ENABLE_POSE:-false}
-      - ENABLE_SCENE_OCR=${ENABLE_SCENE_OCR:-false}
-      - ENABLE_FACE_ID=${ENABLE_FACE_ID:-false}
-      - ENABLE_SIGNS=${ENABLE_SIGNS:-false}
-      - ENABLE_SCENE_CLS=${ENABLE_SCENE_CLS:-false}
-      - ENABLE_INSTANCE_SEG=${ENABLE_INSTANCE_SEG:-false}
-      - ENABLE_SMALL_OBJECTS=${ENABLE_SMALL_OBJECTS:-false}
-      - ENABLE_ANOMALY=${ENABLE_ANOMALY:-false}
-      - ENABLE_OPEN_VOCAB=${ENABLE_OPEN_VOCAB:-false}
-      # available = ENABLE_* AND health HTTP de paddlex (TTL 15s).
+      # All SPA caps ENABLE literal true (local .env=false must not disable them).
+      - ENABLE_VEHICLES=true
+      - ENABLE_FACE_DETECTION=true
+      - ENABLE_SCENE_SEG=true
+      - ENABLE_POSE=true
+      - ENABLE_SCENE_OCR=true
+      - ENABLE_FACE_ID=true
+      - ENABLE_SIGNS=true
+      - ENABLE_SCENE_CLS=true
+      - ENABLE_INSTANCE_SEG=true
+      - ENABLE_SMALL_OBJECTS=true
+      - ENABLE_ANOMALY=true
+      - ENABLE_OPEN_VOCAB=true
+      - ENABLE_PEDESTRIAN_ATTRS=true
+      # available listing = ENABLE_*; serving = health HTTP (TTL 15s).
       - CAPABILITY_HEALTH_CHECK=${CAPABILITY_HEALTH_CHECK:-true}
       - PADDLEX_URL=${PADDLEX_URL:-http://paddlex:8080}
       - PADDLEX_OBJECTS_URL=${PADDLEX_OBJECTS_URL:-http://paddlex-objects:8082}
@@ -425,6 +413,12 @@ services:
         condition: service_healthy
       paddlex-faces:
         condition: service_healthy
+      paddlex:
+        condition: service_healthy
+      paddlex-ocr:
+        condition: service_healthy
+      paddlex-pose:
+        condition: service_healthy
     environment:
       - PYTHONPATH=/app
       - MEDIA_DIR=${MEDIA_DIR:-/media}
@@ -450,7 +444,7 @@ services:
       - PADDLEX_OCR_URL=${PADDLEX_OCR_URL:-http://paddlex-ocr:8081}
       - PADDLEX_OBJECTS_URL=${PADDLEX_OBJECTS_URL:-http://paddlex-objects:8082}
       - PADDLEX_OBJECTS_PREDICT_PATH=${PADDLEX_OBJECTS_PREDICT_PATH:-/object-detection}
-      - ENABLE_PLATE_OCR=${ENABLE_PLATE_OCR:-false}
+      - ENABLE_PLATE_OCR=${ENABLE_PLATE_OCR:-true}
       - OCR_MIN_SCORE=${OCR_MIN_SCORE:-0.7}
       - OCR_EVERY_N_FRAMES=${OCR_EVERY_N_FRAMES:-5}
       - OCR_TOPK=${OCR_TOPK:-3}
@@ -458,25 +452,25 @@ services:
       - PADDLEX_FACES_URL=${PADDLEX_FACES_URL:-http://paddlex-faces:8083}
       # Faces usa YAML custom con pipeline object_detection -> endpoint /object-detection
       - PADDLEX_FACES_PREDICT_PATH=${PADDLEX_FACES_PREDICT_PATH:-/object-detection}
-      - ENABLE_FACE_DETECTION=${ENABLE_FACE_DETECTION:-true}
+      - ENABLE_FACE_DETECTION=true
       - PADDLEX_PEDESTRIANS_URL=${PADDLEX_PEDESTRIANS_URL:-http://paddlex-pedestrians:8084}
       - PADDLEX_PEDESTRIANS_PREDICT_PATH=${PADDLEX_PEDESTRIANS_PREDICT_PATH:-/pedestrian-attribute-recognition}
-      - ENABLE_PEDESTRIAN_ATTRS=${ENABLE_PEDESTRIAN_ATTRS:-false}
+      - ENABLE_PEDESTRIAN_ATTRS=true
       - PADDLEX_SCENE_URL=${PADDLEX_SCENE_URL:-http://paddlex-scene:8085}
       - PADDLEX_SCENE_PREDICT_PATH=${PADDLEX_SCENE_PREDICT_PATH:-/semantic-segmentation}
-      - ENABLE_SCENE_SEG=${ENABLE_SCENE_SEG:-false}
+      - ENABLE_SCENE_SEG=true
       - SCENE_LABEL_MODE=${SCENE_LABEL_MODE:-cityscapes}
       - CROSSWALK_MIN_RATIO=${CROSSWALK_MIN_RATIO:-0.01}
-      - ENABLE_POSE=${ENABLE_POSE:-false}
+      - ENABLE_POSE=true
       - PADDLEX_POSE_URL=${PADDLEX_POSE_URL:-http://paddlex-pose:8086}
-      - ENABLE_SCENE_OCR=${ENABLE_SCENE_OCR:-false}
+      - ENABLE_SCENE_OCR=true
       - SCENE_OCR_MIN_SCORE=${SCENE_OCR_MIN_SCORE:-0.5}
       - SCENE_OCR_MAX_LINES=${SCENE_OCR_MAX_LINES:-20}
-      - ENABLE_FACE_ID=${ENABLE_FACE_ID:-false}
+      - ENABLE_FACE_ID=true
       - PADDLEX_FACE_ID_URL=${PADDLEX_FACE_ID_URL:-http://paddlex-face-id:8087}
       - FACE_ID_INDEX_KEY=${FACE_ID_INDEX_KEY:-}
-      - ENABLE_SIGNS=${ENABLE_SIGNS:-false}
-      # Producto: YOLO-World via open-vocab (profile full). Legacy COCO: SIGNS_BACKEND=coco + profile legacy-signs.
+      - ENABLE_SIGNS=true
+      # Producto: YOLO-World via open-vocab. Legacy COCO: SIGNS_BACKEND=coco + profile legacy-signs.
       - SIGNS_BACKEND=${SIGNS_BACKEND:-ov}
       - PADDLEX_SIGNS_OV_URL=${PADDLEX_SIGNS_OV_URL:-http://paddlex-open-vocab:8093}
       - PADDLEX_SIGNS_OV_PREDICT_PATH=${PADDLEX_SIGNS_OV_PREDICT_PATH:-/open-vocabulary-detection}
@@ -485,26 +479,27 @@ services:
       - PADDLEX_SIGNS_URL=${PADDLEX_SIGNS_URL:-http://paddlex-signs:8088}
       - SIGNS_LABELS=${SIGNS_LABELS:-}
       - SIGNS_THRESHOLD=${SIGNS_THRESHOLD:-0.1}
-      - ENABLE_SCENE_CLS=${ENABLE_SCENE_CLS:-false}
+      - ENABLE_SCENE_CLS=true
       - PADDLEX_SCENE_CLS_URL=${PADDLEX_SCENE_CLS_URL:-http://paddlex-scene-cls:8089}
-      - ENABLE_INSTANCE_SEG=${ENABLE_INSTANCE_SEG:-false}
+      - ENABLE_INSTANCE_SEG=true
       - PADDLEX_INSTANCES_URL=${PADDLEX_INSTANCES_URL:-http://paddlex-instances:8090}
-      - ENABLE_SMALL_OBJECTS=${ENABLE_SMALL_OBJECTS:-false}
+      - ENABLE_SMALL_OBJECTS=true
       - PADDLEX_SMALL_OBJECTS_URL=${PADDLEX_SMALL_OBJECTS_URL:-http://paddlex-small-objects:8091}
-      - ENABLE_ANOMALY=${ENABLE_ANOMALY:-false}
+      - ENABLE_ANOMALY=true
       - PADDLEX_ANOMALY_URL=${PADDLEX_ANOMALY_URL:-http://paddlex-anomaly:8092}
-      - ENABLE_OPEN_VOCAB=${ENABLE_OPEN_VOCAB:-false}
+      - ENABLE_OPEN_VOCAB=true
       - PADDLEX_OPEN_VOCAB_URL=${PADDLEX_OPEN_VOCAB_URL:-http://paddlex-open-vocab:8093}
       # Cascada: ped->person; face_id->face; open_vocab en oleada 1 (cola larga).
       # faces/pose/signs siguen en oleada 1 (sin trigger) hasta medir recall.
       - ENABLE_EVIDENCE_CASCADE=${ENABLE_EVIDENCE_CASCADE:-true}
       - CASCADE_OBJECT_LOW_SCORE=${CASCADE_OBJECT_LOW_SCORE:-0.35}
-      # Fase 2 lifecycle: pause ped/face_id en idle; unpause en oleada 2.
-      # Opt-in: requiere montar el docker.sock via override (no incluido aqui por default).
+      # Lifecycle opt-in: compose.ondemand.yml monta docker.sock (no default).
       - ENABLE_CONTAINER_LIFECYCLE=${ENABLE_CONTAINER_LIFECYCLE:-false}
       - CONTAINER_IDLE_PAUSE_S=${CONTAINER_IDLE_PAUSE_S:-120}
       - DOCKER_SOCK=${DOCKER_SOCK:-/var/run/docker.sock}
       - LIFECYCLE_PAUSE_CAPS=${LIFECYCLE_PAUSE_CAPS:-}
+      - ENABLE_VEHICLES=true
+      - ENABLE_PLATE_OCR=${ENABLE_PLATE_OCR:-true}
       # Sin "traffic sign": ownership exclusiva de la capacidad signs.
       - OPEN_VOCAB_PROMPT=${OPEN_VOCAB_PROMPT:-person,car}
       - OPEN_VOCAB_THRESHOLD=${OPEN_VOCAB_THRESHOLD:-0.05}

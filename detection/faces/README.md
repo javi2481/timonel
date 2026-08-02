@@ -24,7 +24,7 @@ Detectar rostros humanos (bbox + score) vía modelo face PaddleX
 
 | Item | Valor |
 |------|--------|
-| Compose | `paddlex-faces` (profile `extended`) |
+| Compose | `paddlex-faces` (stack default) |
 | Puerto | `8083` |
 | Env | `PADDLEX_FACES_URL`, `PADDLEX_FACES_PREDICT_PATH` (default `/object-detection`), `ENABLE_FACE_DETECTION` |
 

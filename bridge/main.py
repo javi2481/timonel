@@ -89,6 +89,10 @@ ADAPTER_PREVIEW_FRAME_URL = os.getenv(
 ADAPTER_CAPABILITIES_URL = os.getenv(
     "ADAPTER_CAPABILITIES_URL", "http://adapter:8000/capabilities"
 )
+ADAPTER_CAPABILITIES_ERRORS_URL = os.getenv(
+    "ADAPTER_CAPABILITIES_ERRORS_URL",
+    f"{ADAPTER_CAPABILITIES_URL.rstrip('/')}/errors",
+)
 MEDIA_POLL_INTERVAL = float(os.getenv("MEDIA_POLL_INTERVAL", "1.0"))
 PREVIEW_IMAGE_HEARTBEAT_SECONDS = float(
     os.getenv("PREVIEW_IMAGE_HEARTBEAT_SECONDS", "5.0")
@@ -155,10 +159,25 @@ async def fetch_current_media(client: httpx.AsyncClient) -> Optional[dict[str, A
     }
 
 
+async def report_lifecycle_errors(
+    client: httpx.AsyncClient, lifecycle: Optional[ContainerLifecycle]
+) -> None:
+    """Push ensure_awake failures to adapter so SPA paints red."""
+    if lifecycle is None or not getattr(lifecycle, "enabled", False):
+        return
+    errors = getattr(lifecycle, "last_errors", None)
+    if not errors:
+        return
+    payload = {"errors": dict(errors)}
+    ok = await post_json(client, ADAPTER_CAPABILITIES_ERRORS_URL, payload)
+    if ok and hasattr(lifecycle, "last_errors"):
+        lifecycle.last_errors.clear()
+
+
 async def fetch_active_capability_names(client: httpx.AsyncClient) -> set[str]:
     """Registry names con available=true y active=true desde GET /capabilities.
 
-    El bridge solo corre capas activas (on-demand vía PUT /capabilities).
+    El bridge solo corre capas activas (SPA / PUT /capabilities).
     Fallback: todos los CAPABILITIES si falla el GET.
     """
     try:
@@ -351,9 +370,10 @@ async def run_detections(
     caps_wave1 = [c for c in caps if c.name in wave1_names]
     caps_gather_w1 = [c for c in caps_wave1 if c.name not in tiled_names]
 
-    # Wake pausables that land in wave1 (cascade off, or future pausables).
+    # Wake lifecycle-managed caps in wave1 (solo si ENABLE_CONTAINER_LIFECYCLE).
     if lifecycle is not None and lifecycle.enabled:
         await lifecycle.ensure_awake(wave1_names)
+        await report_lifecycle_errors(client, lifecycle)
 
     by_name = await gather_capabilities(
         client,
@@ -422,6 +442,7 @@ async def run_detections(
         )
         if lifecycle is not None and lifecycle.enabled and dep_names:
             woken = await lifecycle.ensure_awake(dep_names)
+            await report_lifecycle_errors(client, lifecycle)
             if woken:
                 logger.info("lifecycle wake wave2=%s", sorted(woken))
         wave2 = await gather_capabilities(

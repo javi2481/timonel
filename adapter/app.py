@@ -144,9 +144,11 @@ class AppState:
     # (generation != last_ingest_generation) de "completo".
     last_ingest_generation: Optional[int] = None
     # Runtime active ⊆ deploy available, keyed by SPA entity_type.
-    # Boot: object+face when available. Late health → promote via _sync_boot_active.
+    # Boot: todas las SPA cuando available. Late health → promote via _sync_boot_active.
     active: dict[str, bool] = field(default_factory=dict)
     prev_available: dict[str, bool] = field(default_factory=dict)
+    # Per-entity last start/health error (cleared on successful serve or re-Prender).
+    capability_errors: dict[str, str] = field(default_factory=dict)
     latest_frame: Optional[bytes] = None
     frame_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     media_seen_mtimes: dict[str, float] = field(default_factory=dict)
@@ -161,8 +163,8 @@ def _env_enabled(name: str, default: str = "false") -> bool:
 
 
 # SPA entity_type → registry name → ENABLE_* (None = always available).
-# critical=True → no se puede PUT active=false (ninguna en core objects+faces).
-# vehicle es opt-in (ENABLE_VEHICLES + profile full).
+# critical=True → no se puede PUT active=false (ninguna en el catálogo actual).
+# Compose fuerza ENABLE_* true en el stack default.
 _SPA_CAPABILITY_DEFS: list[tuple[str, str, Optional[str], bool]] = [
     ("vehicle", "vehicles", "ENABLE_VEHICLES", False),
     ("object", "objects", None, False),
@@ -179,22 +181,43 @@ _SPA_CAPABILITY_DEFS: list[tuple[str, str, Optional[str], bool]] = [
     ("open_vocab", "open_vocab", "ENABLE_OPEN_VOCAB", False),
 ]
 
-# Al boot: activas si available. El resto available queda inactive para
-# on-demand (PUT active=true → generation bump → bridge re-corre).
-_BOOT_ACTIVE_WHEN_AVAILABLE: frozenset[str] = frozenset({"object", "face"})
+# Al boot: todas las capas SPA activas si available (ENABLE_*).
+_BOOT_ACTIVE_WHEN_AVAILABLE: frozenset[str] = frozenset(
+    entity_type for entity_type, *_ in _SPA_CAPABILITY_DEFS
+)
 
 
 def _compute_available() -> dict[str, bool]:
-    """available = ENABLE_*; si CAPABILITY_HEALTH_CHECK, también health del serving."""
-    check_health = _env_enabled("CAPABILITY_HEALTH_CHECK", "false")
+    """available = ENABLE_* only (listable / activatable even if container stopped)."""
     out: dict[str, bool] = {}
     for entity_type, _name, env_name, _critical in _SPA_CAPABILITY_DEFS:
         enabled = True if env_name is None else _env_enabled(env_name)
-        if not enabled:
+        out[entity_type] = enabled
+    return out
+
+
+def _compute_serving() -> dict[str, bool]:
+    """serving = health HTTP del PaddleX (si CAPABILITY_HEALTH_CHECK); else == available.
+
+    On-demand inactivas no se sondean: el contenedor suele estar stopped y un
+    probe síncrono bloquearía el event loop de FastAPI (bridge no ve /media).
+    """
+    check_health = _env_enabled("CAPABILITY_HEALTH_CHECK", "false")
+    available = _compute_available()
+    st = _app_state
+    active = st.active if st is not None else {}
+    out: dict[str, bool] = {}
+    for entity_type, _name, env_name, _critical in _SPA_CAPABILITY_DEFS:
+        if not available.get(entity_type):
             out[entity_type] = False
             continue
         if not check_health:
             out[entity_type] = True
+            continue
+        # Caps inactivas → no HTTP (evita bloquear event loop). Activas se sondean.
+        is_boot = entity_type in _BOOT_ACTIVE_WHEN_AVAILABLE
+        if not is_boot and not active.get(entity_type):
+            out[entity_type] = False
             continue
         url = _paddlex_url_for_entity(entity_type)
         if url is None:
@@ -231,8 +254,9 @@ def _paddlex_url_for_entity(entity_type: str) -> Optional[str]:
     return mapping.get(entity_type)
 
 
-_HEALTH_TTL_S = float(os.getenv("CAPABILITY_HEALTH_TTL_S", "15"))
-_HEALTH_TIMEOUT_S = float(os.getenv("CAPABILITY_HEALTH_TIMEOUT_S", "1.5"))
+_HEALTH_OK_TTL_S = float(os.getenv("CAPABILITY_HEALTH_TTL_S", "15"))
+_HEALTH_FAIL_TTL_S = float(os.getenv("CAPABILITY_HEALTH_FAIL_TTL_S", "3"))
+_HEALTH_TIMEOUT_S = float(os.getenv("CAPABILITY_HEALTH_TIMEOUT_S", "0.75"))
 _health_cache: dict[str, tuple[float, bool]] = {}
 
 
@@ -241,8 +265,11 @@ def _service_healthy(base_url: str) -> bool:
     key = base_url.rstrip("/")
     now = time.monotonic()
     cached = _health_cache.get(key)
-    if cached is not None and now - cached[0] < _HEALTH_TTL_S:
-        return cached[1]
+    if cached is not None:
+        cached_at, cached_ok = cached
+        ttl = _HEALTH_OK_TTL_S if cached_ok else _HEALTH_FAIL_TTL_S
+        if now - cached_at < ttl:
+            return cached_ok
 
     ok = False
     try:
@@ -275,13 +302,19 @@ def _service_healthy(base_url: str) -> bool:
     return ok
 
 
+def _invalidate_health_cache_for_entity(entity_type: str) -> None:
+    url = _paddlex_url_for_entity(entity_type)
+    if url:
+        _health_cache.pop(url.rstrip("/"), None)
+
+
 def reset_capability_health_cache() -> None:
     """Solo tests."""
     _health_cache.clear()
 
 
 def _sync_boot_active(st: AppState, available: dict[str, bool]) -> None:
-    """Cuando una capa core pasa a available, activarla (health tardío al boot).
+    """Cuando una capa boot-active pasa a available, activarla (health tardío al boot).
 
     No re-enciende si el usuario la apagó después de haber estado available.
     """
@@ -297,16 +330,33 @@ def _spa_capability_catalog() -> dict[str, Any]:
     """Catálogo GET/PUT keyed por SPA entity_type (sin pedestrians/plates)."""
     st = state()
     available = _compute_available()
+    serving = _compute_serving()
     _sync_boot_active(st, available)
+    # Clear sticky errors once the service is healthy again.
+    for entity_type, ok in serving.items():
+        if ok and entity_type in st.capability_errors:
+            st.capability_errors.pop(entity_type, None)
     capabilities: dict[str, dict[str, Any]] = {}
     for entity_type, name, _env, critical in _SPA_CAPABILITY_DEFS:
         avail = available[entity_type]
+        serve = bool(serving.get(entity_type))
         active = bool(st.active.get(entity_type, False)) and avail
+        err = st.capability_errors.get(entity_type)
+        if serve:
+            runtime = "running"
+        elif avail:
+            runtime = "stopped"
+        else:
+            runtime = "unavailable"
         entry: dict[str, Any] = {
             "name": name,
             "available": avail,
             "active": active,
+            "serving": serve,
+            "runtime": runtime,
         }
+        if err:
+            entry["error"] = err
         if critical:
             entry["critical"] = True
         capabilities[entity_type] = entry
@@ -639,7 +689,7 @@ async def lifespan(_app: FastAPI):
     st = AppState()
     if _PLACEHOLDER_JPEG:
         st.latest_frame = _PLACEHOLDER_JPEG
-    # Boot: solo object+face activas (cuando available). Resto on-demand.
+    # Boot: todas las SPA activas cuando available.
     available = _compute_available()
     st.active = {
         key: bool(avail and key in _BOOT_ACTIVE_WHEN_AVAILABLE)
@@ -761,6 +811,8 @@ async def put_capabilities(request: Request) -> JSONResponse:
         new = bool(value) and available.get(key, False)
         if new and not was:
             activating = True
+            st.capability_errors.pop(key, None)
+            _invalidate_health_cache_for_entity(key)
         st.active[key] = new
 
     if activating:
@@ -776,6 +828,35 @@ async def put_capabilities(request: Request) -> JSONResponse:
             "Capabilities updated (no re-run) active=%s",
             {k: v for k, v in st.active.items() if v},
         )
+    return JSONResponse(_spa_capability_catalog())
+
+
+@app.post("/capabilities/errors")
+async def post_capability_errors(request: Request) -> JSONResponse:
+    """Bridge reporta fallos de start/health por entity_type (o registry name)."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid json"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "error": "expected object"}, status_code=400)
+    raw = body.get("errors")
+    if not isinstance(raw, dict):
+        return JSONResponse({"ok": False, "error": "errors must be object"}, status_code=400)
+
+    registry_to_entity = {name: et for et, name, *_ in _SPA_CAPABILITY_DEFS}
+    known = {et for et, *_ in _SPA_CAPABILITY_DEFS}
+    st = state()
+    for key, msg in raw.items():
+        entity = key if key in known else registry_to_entity.get(str(key))
+        if entity is None:
+            continue
+        text = str(msg).strip() if msg is not None else ""
+        if text:
+            st.capability_errors[entity] = text
+            st.active[entity] = False
+        else:
+            st.capability_errors.pop(entity, None)
     return JSONResponse(_spa_capability_catalog())
 
 

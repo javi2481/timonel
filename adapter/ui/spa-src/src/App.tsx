@@ -1,5 +1,5 @@
 // App — shell SPA: inferencia en background; toggles = solo visibilidad.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   getCapabilities,
   putCapabilities,
@@ -19,7 +19,7 @@ export function App() {
   const [catalog, setCatalog] = useState<Record<string, CapabilityEntry>>({});
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const autoShownGen = useRef<number | null>(null);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   const refreshCatalog = useCallback(async () => {
     try {
@@ -34,12 +34,22 @@ export function App() {
     void refreshCatalog();
   }, [refreshCatalog]);
 
-  // Reset visibility on generation bump (opt-in → todo oculto).
+  // Poll catalog while any capa is warming (active && !serving).
+  useEffect(() => {
+    const warming = Object.values(catalog).some(
+      (c) => c.available && c.active && !c.serving && !c.error,
+    );
+    if (!warming) return;
+    const id = window.setInterval(() => void refreshCatalog(), 2000);
+    return () => window.clearInterval(id);
+  }, [catalog, refreshCatalog]);
+
+  // Reset visibility on generation bump (cajas ocultas hasta que el usuario elija).
   useEffect(() => {
     setVisibility({});
     setHoveredId(null);
     setSelectedId(null);
-    autoShownGen.current = null;
+    setImageLoaded(false);
   }, [state.generation]);
 
   useEffect(() => {
@@ -61,21 +71,20 @@ export function App() {
     state.status === "degraded" ||
     state.status === "empty";
 
-  // Una vez por generation al completar: prender ojos de lo que tuvo hits.
-  useEffect(() => {
-    if (!analysisComplete) return;
-    if (autoShownGen.current === state.generation) return;
-    if (hitEntityTypes.length === 0) {
-      autoShownGen.current = state.generation;
-      return;
-    }
-    autoShownGen.current = state.generation;
-    setVisibility((prev) => {
-      const next = { ...prev };
-      for (const t of hitEntityTypes) next[t] = true;
-      return next;
-    });
-  }, [analysisComplete, state.generation, hitEntityTypes]);
+  const showHeaderProgress =
+    state.status === "uploading" || state.status === "processing";
+  const headerProgressLabel =
+    state.status === "uploading" || (state.status === "processing" && !imageLoaded)
+      ? "Cargando foto…"
+      : "Analizando imagen…";
+  const headerProgressSub =
+    state.status === "processing" && imageLoaded
+      ? `${availableCapCount} capacidad${availableCapCount === 1 ? "" : "es"} disponible${availableCapCount === 1 ? "" : "s"}`
+      : null;
+
+  const onImageLoaded = useCallback((loaded: boolean) => {
+    setImageLoaded(loaded);
+  }, []);
 
   const onShowHits = useCallback(() => {
     setVisibility((prev) => {
@@ -121,15 +130,19 @@ export function App() {
         />
       </header>
 
-      {(state.status === "uploading" || state.status === "processing") && (
+      {showHeaderProgress && (
         <div
           className="tm-header-progress"
           role="progressbar"
           aria-busy="true"
-          aria-label={
-            state.status === "uploading" ? "Subiendo foto" : "Analizando detecciones"
-          }
+          aria-label={headerProgressLabel}
         >
+          <div className="tm-header-progress-copy">
+            <span className="tm-header-progress-label">{headerProgressLabel}</span>
+            {headerProgressSub && (
+              <span className="tm-header-progress-sub">{headerProgressSub}</span>
+            )}
+          </div>
           <div className="tm-progress-indeterminate" aria-hidden>
             <div className="tm-progress-indeterminate-bar" />
           </div>
@@ -159,10 +172,8 @@ export function App() {
               <div className="tm-stage-idle-inner">
                 <h2 className="tm-stage-idle-title">Timonel</h2>
                 <p className="tm-stage-idle-copy">
-                  Timonel orquesta detectores PaddleX sobre una foto. Elegí una
-                  imagen <code>demo_*.jpg</code> del selector (las marcadas core
-                  andan sin profile full) o subí la tuya. Después prendé una capa
-                  bajo demanda en el panel para re-analizar la misma foto.
+                  Subí tu foto para que PaddleX la analice. Las capas quedan
+                  activas; vos elegís cuáles mostrar en la imagen.
                 </p>
               </div>
             </div>
@@ -179,7 +190,7 @@ export function App() {
                 status={state.status}
                 errorMessage={state.errorMessage}
                 onRetry={retry}
-                availableCapCount={availableCapCount}
+                onImageLoaded={onImageLoaded}
               />
               <Legend events={state.events} visibility={visibility} />
             </>

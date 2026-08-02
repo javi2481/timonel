@@ -1,4 +1,4 @@
-"""Unit tests for bridge container lifecycle (pause/unpause idle + wake)."""
+"""Unit tests for bridge container lifecycle (start/stop idle + wake)."""
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ class FakeDocker:
         self.states = dict(states or {})
         self.paused: list[str] = []
         self.unpaused: list[str] = []
+        self.started: list[str] = []
+        self.stopped: list[str] = []
 
     async def container_state(self, name: str) -> Optional[str]:
         return self.states.get(name)
@@ -37,6 +39,16 @@ class FakeDocker:
     async def unpause(self, name: str) -> bool:
         self.unpaused.append(name)
         self.states[name] = "running"
+        return True
+
+    async def start(self, name: str) -> bool:
+        self.started.append(name)
+        self.states[name] = "running"
+        return True
+
+    async def stop(self, name: str) -> bool:
+        self.stopped.append(name)
+        self.states[name] = "exited"
         return True
 
     async def aclose(self) -> None:
@@ -52,6 +64,8 @@ def _cfg(**kwargs) -> LifecycleConfig:
             "pedestrians": "tm-paddlex-pedestrians",
             "face_id": "tm-paddlex-face-id",
         },
+        health_timeout_s=1.0,
+        health_poll_s=0.05,
     )
     base.update(kwargs)
     return LifecycleConfig(**base)
@@ -65,7 +79,7 @@ class TestLifecycleConfig(unittest.TestCase):
             cfg = LifecycleConfig.from_env()
         self.assertFalse(cfg.enabled)
         self.assertIn("pedestrians", cfg.cap_containers)
-        self.assertNotIn("open_vocab", cfg.cap_containers)
+        self.assertIn("open_vocab", cfg.cap_containers)
 
     def test_custom_pause_caps(self) -> None:
         with patch.dict(
@@ -93,12 +107,36 @@ class TestContainerLifecycle(unittest.IsolatedAsyncioTestCase):
             }
         )
         life = ContainerLifecycle(config=_cfg(), engine=engine)
-        woken = await life.ensure_awake({"pedestrians", "face_id", "open_vocab"})
+        with patch("bridge.lifecycle._wait_http_healthy", AsyncMock(return_value=True)):
+            woken = await life.ensure_awake({"pedestrians", "face_id", "open_vocab"})
         self.assertEqual(woken, ["pedestrians"])
         self.assertEqual(engine.unpaused, ["tm-paddlex-pedestrians"])
         self.assertEqual(engine.states["tm-paddlex-pedestrians"], "running")
 
-    async def test_pause_idle_respects_touch(self) -> None:
+    async def test_ensure_awake_starts_exited(self) -> None:
+        engine = FakeDocker({"tm-paddlex-scene": "exited"})
+        life = ContainerLifecycle(
+            config=_cfg(
+                cap_containers={"scene": "tm-paddlex-scene"},
+            ),
+            engine=engine,
+        )
+        with patch("bridge.lifecycle._wait_http_healthy", AsyncMock(return_value=True)):
+            woken = await life.ensure_awake(["scene"])
+        self.assertEqual(woken, ["scene"])
+        self.assertEqual(engine.started, ["tm-paddlex-scene"])
+
+    async def test_ensure_awake_missing_sets_error(self) -> None:
+        engine = FakeDocker({})
+        life = ContainerLifecycle(
+            config=_cfg(cap_containers={"scene": "tm-paddlex-scene"}),
+            engine=engine,
+        )
+        woken = await life.ensure_awake(["scene"])
+        self.assertEqual(woken, [])
+        self.assertIn("missing", life.last_errors.get("scene", ""))
+
+    async def test_stop_idle_respects_touch(self) -> None:
         engine = FakeDocker(
             {
                 "tm-paddlex-pedestrians": "running",
@@ -107,28 +145,24 @@ class TestContainerLifecycle(unittest.IsolatedAsyncioTestCase):
         )
         life = ContainerLifecycle(config=_cfg(idle_pause_s=10.0), engine=engine)
         life.touch(["pedestrians"])
-        # face_id never touched → idle → pause
-        paused = await life.pause_idle(now=time.monotonic())
-        self.assertEqual(paused, ["face_id"])
-        self.assertEqual(engine.paused, ["tm-paddlex-face-id"])
-
-        # pedestrians recently touched → not paused
+        stopped = await life.stop_idle(now=time.monotonic())
+        self.assertEqual(stopped, ["face_id"])
+        self.assertEqual(engine.stopped, ["tm-paddlex-face-id"])
         self.assertEqual(engine.states["tm-paddlex-pedestrians"], "running")
 
-        # Advance past idle for pedestrians
         past = time.monotonic() + 100.0
-        paused2 = await life.pause_idle(now=past)
-        self.assertEqual(paused2, ["pedestrians"])
+        stopped2 = await life.stop_idle(now=past)
+        self.assertEqual(stopped2, ["pedestrians"])
 
     async def test_disabled_noop(self) -> None:
         engine = FakeDocker({"tm-paddlex-pedestrians": "running"})
         life = ContainerLifecycle(config=_cfg(enabled=False), engine=engine)
         self.assertEqual(await life.ensure_awake(["pedestrians"]), [])
         self.assertEqual(await life.pause_idle(), [])
-        self.assertEqual(engine.paused, [])
-        self.assertEqual(engine.unpaused, [])
+        self.assertEqual(engine.stopped, [])
+        self.assertEqual(engine.started, [])
 
-    async def test_pause_all_on_start(self) -> None:
+    async def test_pause_all_on_start_stops(self) -> None:
         engine = FakeDocker(
             {
                 "tm-paddlex-pedestrians": "running",
@@ -136,8 +170,12 @@ class TestContainerLifecycle(unittest.IsolatedAsyncioTestCase):
             }
         )
         life = ContainerLifecycle(config=_cfg(idle_pause_s=999.0), engine=engine)
-        paused = await life.pause_all_pausable()
-        self.assertEqual(sorted(paused), ["face_id", "pedestrians"])
+        stopped = await life.pause_all_pausable()
+        self.assertEqual(sorted(stopped), ["face_id", "pedestrians"])
+        self.assertEqual(sorted(engine.stopped), [
+            "tm-paddlex-face-id",
+            "tm-paddlex-pedestrians",
+        ])
 
 
 class TestRunDetectionsLifecycleHook(unittest.IsolatedAsyncioTestCase):
@@ -221,9 +259,7 @@ class TestRunDetectionsLifecycleHook(unittest.IsolatedAsyncioTestCase):
                                 )
         self.assertFalse(degraded)
         self.assertIsNotNone(dets)
-        # First wake: wave1 (no ped/face_id when cascade on)
         self.assertTrue(any("vehicles" in c or "objects" in c for c in calls))
-        # Second wake: wave2 dependents
         self.assertTrue(
             any(c >= {"pedestrians", "face_id"} for c in calls),
             msg=f"calls={calls}",

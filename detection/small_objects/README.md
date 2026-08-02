@@ -17,5 +17,5 @@ apuntar el servicio a pesos propios.
 
 | Item | Valor |
 |------|--------|
-| Compose | `paddlex-small-objects` `:8091` |
+| Compose | `paddlex-small-objects` `:8091` (stack default; ENABLE true vía Compose) |
 | Env | `ENABLE_SMALL_OBJECTS`, `PADDLEX_SMALL_OBJECTS_URL` |

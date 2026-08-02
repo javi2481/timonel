@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Smoke del profile extended: health + flags tipicos.
-# Uso: ./scripts/smoke_extended.sh
+# Smoke del stack default: health de puertos PaddleX típicos + sample /events.
+# Uso (con full_up / docker compose up): ./scripts/smoke_extended.sh
 set -euo pipefail
 
 ADAPTER="${ADAPTER_URL:-http://127.0.0.1:8000}"
@@ -26,11 +26,11 @@ do
     || curl -fsS -m 3 "http://127.0.0.1:${port}/docs" >/dev/null 2>&1; then
     echo "  reachable"
   else
-    echo "  not reachable (ok si el profile/servicio no está up)"
+    echo "  not reachable (servicio aún starting o down)"
   fi
 done
 
 echo "== events sample =="
 curl -fsS "$ADAPTER/events?limit=5" | head -c 800
 echo
-echo "Smoke done. Activá ENABLE_* en .env y subí una foto al dashboard."
+echo "Smoke done. Subí o seleccioná una foto en el dashboard."

@@ -22,7 +22,7 @@ Atributos de personas (género, edad, ropa, …) vía PaddleX
 
 | Item | Valor |
 |------|--------|
-| Compose | `paddlex-pedestrians` (profile `extended`) |
+| Compose | `paddlex-pedestrians` (stack default) |
 | Puerto | `8084` |
 | Env | `PADDLEX_PEDESTRIANS_URL`, `ENABLE_PEDESTRIAN_ATTRS` |
 

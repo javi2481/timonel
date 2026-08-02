@@ -34,7 +34,6 @@ jobs:
       - name: Compose onboarding config
         run: |
           docker compose config --quiet
-          docker compose --profile full --env-file .env.full.example config --quiet
           PYTHONPATH=. python3 tests/test_compose_onboarding.py
       - uses: actions/setup-node@v4
         with:

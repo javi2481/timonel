@@ -2,13 +2,13 @@
 
 ## English summary
 
-Timonel orchestrates PaddleX detectors over **one photo** — objects, faces, and on-demand layers (pose, vehicles, text, …). You toggle each layer and see what it contributes. Stack: Docker Compose + FastAPI adapter/bridge + SPA. Try it with `docker compose up --build --wait`, then open http://localhost:8000/.
+Timonel orchestrates PaddleX detectors over **one photo** — objects, faces, pose, vehicles, text, and the rest of the SPA layers. Stack: Docker Compose + FastAPI adapter/bridge + SPA. Try it with `.\scripts\full_up.ps1` (or `docker compose up --build --wait`), then open http://localhost:8000/.
 
 ---
 
-Timonel orquesta detectores PaddleX sobre **una foto**: objetos, caras y
-capas bajo demanda (pose, vehículos, texto, …). Vos prendés cada capa y mirás
-qué aporta.
+Timonel orquesta detectores PaddleX sobre **una foto**: objetos, caras, pose,
+vehículos, texto y el resto de capas del panel. Al levantar el proyecto
+arranacan **todas** las capacidades del stack default.
 
 > Orquestar, no inventar.
 
@@ -19,27 +19,36 @@ qué aporta.
 ## Prerrequisitos
 
 - Docker Desktop / Engine + Compose v2
-- ~8 GB RAM libres para el stack **core** (más para `--profile full`)
+- ~16+ GB RAM libres recomendados (varios contenedores PaddleX ~2 GB c/u)
 - Red la primera vez (descarga de imágenes/modelos; puede tardar varios minutos)
 
 No hace falta Node ni Python en el host para la UI. El `.env` es **opcional**
-(Compose ya trae defaults); copialo solo si querés ajustar flags.
+(Compose ya fuerza `ENABLE_*=true` en adapter/bridge).
 
-## Probarlo (core)
+## Probarlo (recomendado: todas las capacidades)
 
-```bash
-docker compose up --build --wait
+```powershell
+.\scripts\full_up.ps1
 ```
 
-PowerShell equivalente: el mismo comando.
+```bash
+chmod +x scripts/full_up.sh && ./scripts/full_up.sh
+```
+
+Equivale a `docker compose up -d --build --wait`: todos los `tm-paddlex-*`
+del stack default + adapter + bridge. En la UI las capas arrancan **activas**
+(verdes cuando healthy). Click en una capa verde con hits → mostrar/ocultar
+cajas en el canvas.
+
+On-demand (start/stop idle) queda como override avanzado:
+`compose.ondemand.yml` + `ENABLE_CONTAINER_LIFECYCLE`.
+`scripts/ondemand_up.*` redirige a `full_up`.
 
 Abrí [http://localhost:8000/](http://localhost:8000/) (redirige a `/app/`).
 
-1. En el selector elegí una `demo_*.jpg` **core** (p. ej. `demo_03_street.jpg`)
-   o subí una foto.
-2. Esperá overlays / eventos (objetos + caras).
-3. Si hay capas en “Bajo demanda” disponibles, dale **Prender** — re-analiza
-   la misma foto sin volver a subirla.
+1. En el selector elegí una `demo_*.jpg` o subí una foto.
+2. Esperá overlays / eventos (cold start de modelos puede tardar minutos).
+3. Tocá capas verdes para ocultar/mostrar detecciones en el canvas.
 
 | | |
 |--|--|
@@ -59,10 +68,8 @@ Progreso: `docker compose ps` · `docker compose logs -f bridge`
 ## Demos versionadas
 
 En [`imagenes_muestra/`](imagenes_muestra/) hay `demo_*.jpg` con licencia
-redistribuible (ver `LICENSE.md`). El manifiesto indica `requires: core|full`:
-
-- **core** — andan con el default (objects + faces)
-- **full** — texto/OCR y capas que piden `--profile full`
+redistribuible (ver `LICENSE.md`). El manifiesto indica `requires: core|full`
+(histórico); con el stack default todas las capas están arriba.
 
 ## Qué hace
 
@@ -77,37 +84,24 @@ foto → adapter → bridge → PaddleX
               PerceptionEvent → UI
 ```
 
-## Core vs full
+## Stack default
 
-Con `docker compose up` (CPU):
+Con `docker compose up` / `full_up`:
 
-- `adapter` + `bridge` + **objects** + **faces**
+- `adapter` + `bridge`
+- objects, faces, pose, ocr, vehicles
+- pedestrians, scene, face-id, scene-cls, instances, small-objects, anomaly, open-vocab
 
-El resto va a profile `full` + [`.env.full.example`](.env.full.example)
-(más RAM/CPU, cold start más largo, puertos PaddleX `8080–8093`):
+Profiles que siguen aparte: `legacy-signs`, `demo`, `rules`.
 
-```powershell
-Copy-Item .env.full.example .env
-docker compose --profile full up --build --wait
-```
-
-```bash
-cp .env.full.example .env
-docker compose --profile full up --build --wait
-```
-
-Full agrega vehicles (tipo/color/patente), OCR, pose, peatones, escena,
-open-vocab/signs, face-id, scene-cls, instances, small-objects, anomaly.
-
-- **Face ID:** `FACE_ID_INDEX_KEY` vacío en el example — ver `detection/face_id/`.
-- **open-vocab / signs:** comparten `:8093`; no pauses open-vocab solo.
-- Apagado: `docker compose --profile full down` (añadí `-v` solo si querés
-  borrar caches de modelos).
+- **Face ID:** `FACE_ID_INDEX_KEY` vacío por default — ver `detection/face_id/`.
+- **open-vocab / signs:** comparten `:8093`.
+- Apagado: `docker compose down` (añadí `-v` solo si querés borrar caches de modelos).
 
 GPU (sustituye vehicles CPU):
 
 ```bash
-docker compose -f docker-compose.yml -f compose.gpu.yml --profile full up --build
+docker compose -f docker-compose.yml -f compose.gpu.yml up --build
 ```
 
 No levantes `--profile demo` junto al bridge real (dos bridges en `/events`).
@@ -117,7 +111,7 @@ Usá `docker compose up adapter bridge-demo` solo si querés el sintético.
 |---------|-----------|
 | `unhealthy` | `docker compose ps` + `logs`; `start_period` 300s en PaddleX |
 | `OOMKilled` | Subir `mem_limit` o bajar `BRIDGE_MAX_WIDTH` |
-| Demo texto sin OCR | `ENABLE_SCENE_OCR=true` + profile full |
+| Objeto pequeño 0 hits | Modelo SOD aéreo; ver `detection/small_objects/README.md` |
 
 ## Recursos
 

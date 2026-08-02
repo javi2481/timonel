@@ -101,6 +101,9 @@ export interface CapabilityEntry {
   name: string;
   available: boolean;
   active: boolean;
+  serving?: boolean;
+  runtime?: string;
+  error?: string;
   critical?: boolean;
 }
 

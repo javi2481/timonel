@@ -5,8 +5,9 @@
 UI de Timonel (Vite/React) servida por el adapter + placeholder de preview.
 Abrís `http://localhost:8000/`; el adapter redirige `/` → `/app/`.
 
-Empty-state: elegí `demo_*.jpg` (core) o subí una foto; después **Prender**
-una capa bajo demanda para re-analizar la misma imagen.
+Empty-state: elegí `demo_*.jpg` o subí una foto. Con el stack default
+(`full_up` / `docker compose up`) las capas ya están activas; click en una
+capa verde con hits muestra/oculta cajas en el canvas.
 
 ## Cómo funciona
 
