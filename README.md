@@ -2,7 +2,7 @@
 
 ## English summary
 
-Timonel orchestrates PaddleX detectors over **one photo** — objects, faces, pose, vehicles, text, and the rest of the SPA layers. Stack: Docker Compose + FastAPI adapter/bridge + SPA. Try it with `.\scripts\full_up.ps1` (or `docker compose up --build --wait`), then open http://localhost:8000/.
+Timonel orchestrates PaddleX detectors over **one photo** — objects, faces, pose, vehicles, text, and the rest of the SPA layers. Stack: Docker Compose + FastAPI adapter/bridge + SPA. Try it with `docker compose up --build --wait`, then open http://localhost:8000/.
 
 ---
 
@@ -14,7 +14,7 @@ arranacan **todas** las capacidades del stack default.
 
 ![Panel de Timonel](assets/panel.png)
 
-<p align="center"><sub>Selector de demos del repo, capas con tilde de visibilidad y overlays PaddleX sobre una sola foto.</sub></p>
+<p align="center"><sub>Subí una foto, capas con tilde de visibilidad y overlays PaddleX sobre una sola imagen.</sub></p>
 
 ## Prerrequisitos
 
@@ -29,22 +29,16 @@ No hace falta Node ni Python en el host para la UI. El `.env` es **opcional**
 
 ## Probarlo (recomendado: todas las capacidades)
 
-```powershell
-.\scripts\full_up.ps1
-```
-
 ```bash
-chmod +x scripts/full_up.sh && ./scripts/full_up.sh
+docker compose up --build --wait
 ```
 
-Equivale a `docker compose up -d --build --wait`: todos los `tm-paddlex-*`
-del stack default + adapter + bridge. En la UI las capas arrancan **activas**
-(verdes cuando healthy). Click en una capa verde con hits → mostrar/ocultar
-cajas en el canvas (tilde = visible).
+Levanta todos los `tm-paddlex-*` del stack default + adapter + bridge. En la
+UI las capas arrancan **activas** (verdes cuando healthy). Click en una capa
+verde con hits → mostrar/ocultar cajas en el canvas (tilde = visible).
 
 On-demand (start/stop idle) queda como override avanzado:
 `compose.ondemand.yml` + `ENABLE_CONTAINER_LIFECYCLE`.
-`scripts/ondemand_up.*` redirige a `full_up`.
 
 Abrí [http://localhost:8000/](http://localhost:8000/) (redirige a `/app/`).
 
@@ -91,7 +85,7 @@ foto → adapter → bridge → PaddleX
 
 ## Stack default
 
-Con `docker compose up` / `full_up`:
+Con `docker compose up`:
 
 - `adapter` + `bridge`
 - objects, faces, pose, ocr, vehicles
